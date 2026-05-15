@@ -1437,9 +1437,30 @@
         showPanelLoading('AI 分析中，请稍候…');
 
         try {
+          // 从 blurb 提取可见元数据
+          const fandom  = [...li.querySelectorAll('.fandoms .tag')].map(t => t.textContent).join(', ');
+          const ship    = [...li.querySelectorAll('.relationships .tag')].map(t => t.textContent).join(', ');
+          const tags    = [...li.querySelectorAll('.freeforms .tag')].map(t => t.textContent).join(', ');
+          const rating  = li.querySelector('.rating .tag')?.textContent || '';
+          const words   = li.querySelector('dd.words')?.textContent || '';
+          const chapters = li.querySelector('dd.chapters')?.textContent || '';
+          const summary = li.querySelector('blockquote.userstuff')?.innerText?.trim()
+                       || li.querySelector('.summary.module')?.innerText?.trim() || '';
+
+          const content = [
+            `【作品标题】${title}`,
+            `【Fandom】${fandom}`,
+            `【CP/Relationship】${ship}`,
+            `【Rating】${rating}`,
+            `【字数】${words}　【章节】${chapters}`,
+            `【Tags】${tags}`,
+            summary ? `【简介】\n${summary}` : '',
+            `\n注意：本次为搜索页快速预览，仅凭元数据和简介分析，无正文。请基于简介、CP、Tags 等线索进行评估，在 one_liner 中注明"预览分析"，各维度评分可适当保守并在 comment 中注明依据有限。`
+          ].filter(Boolean).join('\n');
+
           const result = await apiCall('POST', '/api/analyze', {
             work_id: workId,
-            content: `【作品标题】${title}\n【来源】AO3 搜索页快速预览，无正文`,
+            content,
             model: GM_getValue('model', 'deepseek-v3.2'),
             is_complete: false
           });
