@@ -209,11 +209,12 @@
     }
     .ao3s-btn {
       flex: 1; padding: 11px 20px; border-radius: 12px; border: none;
-      cursor: pointer; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-size: 14px; font-weight: 600; line-height: 1;
       background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
       transition: opacity 0.15s, transform 0.1s;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
       white-space: nowrap; box-sizing: border-box;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     }
     .ao3s-btn:hover { opacity: 0.82; }
     .ao3s-btn:active { transform: scale(0.97); }
