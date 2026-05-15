@@ -169,7 +169,13 @@
       transition: width 0.6s ease-out;
     }
     .ao3s-dim-fill.low { background: var(--ao3s-warn); }
-    .ao3s-dim-comment { font-size: 11px; color: var(--ao3s-muted); margin-top: 2px; }
+    .ao3s-dim-comment { font-size: 12px; color: var(--ao3s-on-surface); margin-top: 6px; line-height: 1.6; }
+    .ao3s-dim-quote {
+      display: block; margin-top: 4px; padding: 4px 10px;
+      border-left: 2px solid var(--ao3s-primary); border-radius: 0 4px 4px 0;
+      background: var(--ao3s-surface-2); font-size: 12px; font-style: italic;
+      color: var(--ao3s-muted); line-height: 1.6;
+    }
 
     /* 雷点区 */
     .ao3s-redflag-section {
@@ -929,6 +935,11 @@
       const d = result.dimensions?.[key];
       if (!d) return '';
       const isLow = d.score < 6;
+      const raw = d.comment || '';
+      const quoteMatch = raw.match(/原文[：:]\s*「([^」]+)」/);
+      const evalText = raw.replace(/原文[：:]\s*「[^」]+」/, '').trim();
+      const quoteHtml = quoteMatch
+        ? `<span class="ao3s-dim-quote">「${quoteMatch[1]}」</span>` : '';
       return `
         <div class="ao3s-dim-row">
           <div class="ao3s-dim-label">
@@ -938,7 +949,7 @@
           <div class="ao3s-dim-bar">
             <div class="ao3s-dim-fill ${isLow ? 'low' : ''}" style="width:${d.score * 10}%"></div>
           </div>
-          <div class="ao3s-dim-comment">${d.comment || ''}</div>
+          <div class="ao3s-dim-comment">${evalText}${quoteHtml}</div>
         </div>
       `;
     }).join('');

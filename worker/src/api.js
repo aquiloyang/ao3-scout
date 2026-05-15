@@ -427,11 +427,11 @@ ${content}
     "work_type": "原创文或翻译文"
   },
   "dimensions": {
-    "logic_structure":   { "score": <1-10，参照标尺>, "comment": "具体说明优劣，不要泛泛而谈" },
-    "character_voice":   { "score": <1-10>, "comment": "具体说明优劣" },
-    "narrative_rhythm":  { "score": <1-10>, "comment": "具体说明优劣" },
-    "emotional_tension": { "score": <1-10>, "comment": "具体说明优劣" },
-    "originality":       { "score": <1-10>, "comment": "具体说明优劣" }
+    "logic_structure":   { "score": <1-10，参照标尺>, "comment": "评价+原文引用佐证，格式：[评价]。原文：「不超过30字的原文片段」" },
+    "character_voice":   { "score": <1-10>, "comment": "评价+原文引用佐证，格式：[评价]。原文：「不超过30字的原文片段」" },
+    "narrative_rhythm":  { "score": <1-10>, "comment": "评价+原文引用佐证，格式：[评价]。原文：「不超过30字的原文片段」" },
+    "emotional_tension": { "score": <1-10>, "comment": "评价+原文引用佐证，格式：[评价]。原文：「不超过30字的原文片段」" },
+    "originality":       { "score": <1-10>, "comment": "评价+原文引用佐证，格式：[评价]。原文：「不超过30字的原文片段」" }
   },
   "red_flags": [
     { "type": "问题类型", "excerpt": "原文片段不超过50字", "reason": "问题说明" }
