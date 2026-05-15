@@ -208,13 +208,19 @@
       display: flex; gap: 8px; margin-bottom: 8px;
     }
     .ao3s-btn {
-      flex: 1; padding: 8px 12px; border-radius: 8px; border: none;
-      cursor: pointer; font-size: 13px; font-weight: 500;
+      flex: 1; padding: 11px 20px; border-radius: 12px; border: none;
+      cursor: pointer; font-size: 14px; font-weight: 600;
       background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
-      transition: opacity 0.15s;
+      transition: opacity 0.15s, transform 0.1s;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+      white-space: nowrap;
     }
-    .ao3s-btn:hover { opacity: 0.8; }
-    .ao3s-btn.primary { background: var(--ao3s-primary); color: #fff; }
+    .ao3s-btn:hover { opacity: 0.82; }
+    .ao3s-btn:active { transform: scale(0.97); }
+    .ao3s-btn.primary {
+      background: var(--ao3s-primary); color: #fff;
+      box-shadow: 0 4px 16px rgba(192,57,43,0.4);
+    }
     .ao3s-footer-meta {
       display: flex; justify-content: space-between; align-items: center;
       font-size: 12px; color: var(--ao3s-muted);
@@ -270,48 +276,67 @@
       position: fixed; inset: 0; z-index: 9500;
       background: var(--ao3s-overlay);
       display: flex; align-items: center; justify-content: center;
+      padding: 16px;
     }
     .ao3s-modal {
       background: var(--ao3s-surface); color: var(--ao3s-on-surface);
-      border-radius: 16px; padding: 28px; width: 420px; max-width: 90vw;
-      max-height: 85vh; overflow-y: auto;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      border-radius: 24px; padding: 32px; width: 440px; max-width: 100%;
+      max-height: 88vh; overflow-y: auto;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
     }
-    .ao3s-modal h2 { margin: 0 0 8px; font-size: 20px; }
-    .ao3s-modal p { margin: 0 0 20px; font-size: 14px; color: var(--ao3s-muted); line-height: 1.6; }
-    .ao3s-modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+    .ao3s-modal h2 {
+      margin: 0 0 8px; font-size: 24px; font-weight: 700;
+      letter-spacing: -0.5px; line-height: 1.3; color: var(--ao3s-on-surface);
+    }
+    .ao3s-modal p.ao3s-modal-desc {
+      margin: 0 0 24px; font-size: 14px; color: var(--ao3s-muted);
+      line-height: 1.75;
+    }
+    .ao3s-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 32px; }
 
     /* 标签云 */
     .ao3s-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
     .ao3s-tag {
-      padding: 6px 14px; border-radius: 20px; font-size: 13px;
-      border: 1px solid var(--ao3s-surface-2); cursor: pointer;
-      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
-      transition: all 0.15s;
+      padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 500;
+      border: 1.5px solid var(--ao3s-surface-2); cursor: pointer;
+      background: transparent; color: var(--ao3s-on-surface);
+      transition: background 0.15s, border-color 0.15s, color 0.15s; user-select: none;
+      line-height: 1.2;
     }
-    .ao3s-tag.selected { background: var(--ao3s-primary); color: #fff; border-color: var(--ao3s-primary); }
+    .ao3s-tag:hover { border-color: var(--ao3s-primary); color: var(--ao3s-primary); }
+    .ao3s-tag.selected {
+      background: var(--ao3s-primary); color: #fff;
+      border-color: var(--ao3s-primary); box-shadow: 0 2px 8px rgba(192,57,43,0.3);
+    }
 
     /* 输入框 */
     .ao3s-input {
-      width: 100%; padding: 10px 14px; border-radius: 8px; font-size: 14px;
-      border: 1px solid var(--ao3s-surface-2);
+      width: 100%; padding: 12px 16px; border-radius: 12px; font-size: 14px;
+      border: 1.5px solid var(--ao3s-surface-2);
       background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
-      box-sizing: border-box; outline: none;
+      box-sizing: border-box; outline: none; transition: border-color 0.15s, background 0.15s;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
     }
-    .ao3s-input:focus { border-color: var(--ao3s-primary); }
-    .ao3s-label { font-size: 13px; color: var(--ao3s-muted); margin-bottom: 6px; display: block; }
+    .ao3s-input:focus { border-color: var(--ao3s-primary); background: var(--ao3s-surface); }
+    .ao3s-label {
+      font-size: 11px; font-weight: 700; color: var(--ao3s-muted);
+      margin-bottom: 8px; display: block; text-transform: uppercase; letter-spacing: 0.8px;
+    }
     .ao3s-field { margin-bottom: 16px; }
+    .ao3s-pref-group { margin-bottom: 24px; }
 
     /* 步骤指示器 */
     .ao3s-steps {
-      display: flex; justify-content: center; gap: 6px; margin-bottom: 24px;
+      display: flex; justify-content: center; gap: 6px; margin-bottom: 32px;
     }
     .ao3s-step-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--ao3s-surface-2);
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--ao3s-surface-2); transition: all 0.25s cubic-bezier(0.2,0,0,1);
     }
-    .ao3s-step-dot.active { background: var(--ao3s-primary); }
+    .ao3s-step-dot.active {
+      background: var(--ao3s-primary); width: 24px; border-radius: 3px;
+    }
 
     /* 推荐横幅 */
     .ao3s-banner {
@@ -461,124 +486,95 @@
     wrap.className = 'ao3s-modal-wrap';
     document.body.appendChild(wrap);
 
+    // Shared preference state lives outside render() so it persists across re-renders
+    const selected = { prose: [], emotion: [], pace: [], flags: [] };
+
+    function el(tag, attrs = {}) {
+      const e = document.createElement(tag);
+      Object.entries(attrs).forEach(([k, v]) => {
+        if (k === 'cls') e.className = v;
+        else if (k === 'text') e.textContent = v;
+        else if (k === 'html') e.innerHTML = v;
+        else e.setAttribute(k, v);
+      });
+      return e;
+    }
+
+    function makeSteps() {
+      const steps = el('div', { cls: 'ao3s-steps' });
+      for (let i = 0; i < 3; i++) {
+        steps.appendChild(el('div', { cls: `ao3s-step-dot ${i === step ? 'active' : ''}` }));
+      }
+      return steps;
+    }
+
+    function makeTagGroup(labelText, items, key) {
+      const group = el('div', { cls: 'ao3s-pref-group' });
+      group.appendChild(el('div', { cls: 'ao3s-label', text: labelText }));
+      const tags = el('div', { cls: 'ao3s-tags' });
+      items.forEach(item => {
+        const tag = el('div', { cls: `ao3s-tag${selected[key].includes(item) ? ' selected' : ''}`, text: item });
+        tag.onclick = () => {
+          if (selected[key].includes(item)) {
+            selected[key] = selected[key].filter(x => x !== item);
+            tag.classList.remove('selected');
+          } else {
+            selected[key].push(item);
+            tag.classList.add('selected');
+          }
+        };
+        tags.appendChild(tag);
+      });
+      group.appendChild(tags);
+      return group;
+    }
+
     function render() {
       wrap.innerHTML = '';
-      const modal = document.createElement('div');
-      modal.className = 'ao3s-modal';
-
-      // 步骤指示器
-      const steps = document.createElement('div');
-      steps.className = 'ao3s-steps';
-      for (let i = 0; i < 3; i++) {
-        const dot = document.createElement('div');
-        dot.className = `ao3s-step-dot ${i === step ? 'active' : ''}`;
-        steps.appendChild(dot);
-      }
-      modal.appendChild(steps);
+      const modal = el('div', { cls: 'ao3s-modal' });
+      modal.appendChild(makeSteps());
 
       if (step === 0) {
-        // 步骤 0：GitHub 授权
-        modal.innerHTML += `
-          <h2>欢迎使用 AO3 Scout 👋</h2>
-          <p>AI 驱动的同人文质量分析工具，帮你在 30 秒内判断一篇文是否值得读。<br><br>
-          首先，用 GitHub 账号登录（免费，无需任何额外权限）：</p>
-        `;
-        const btn = document.createElement('button');
-        btn.className = 'ao3s-btn primary';
-        btn.style.cssText = 'width:100%;padding:12px;font-size:15px;';
-        btn.textContent = '🐙 GitHub 授权登录';
+        modal.appendChild(el('h2', { text: '欢迎使用 AO3 Scout' }));
+        const desc = el('p', { cls: 'ao3s-modal-desc', text: 'AI 驱动的同人文质量分析工具，帮你在 30 秒内判断一篇文是否值得读。首先用 GitHub 账号完成身份认证（免费，仅读取用户名）。' });
+        modal.appendChild(desc);
+
+        const btn = el('button', { cls: 'ao3s-btn primary', text: '🐙  用 GitHub 登录' });
+        btn.style.cssText = 'width:100%;padding:14px;font-size:15px;margin-top:8px;';
         btn.onclick = () => { startOAuth(); wrap.remove(); };
-        modal.appendChild(steps);
         modal.appendChild(btn);
 
-        const skip = document.createElement('p');
-        skip.style.cssText = 'text-align:center;margin-top:12px;font-size:12px;color:var(--ao3s-muted);cursor:pointer;';
-        skip.textContent = '稍后再说';
+        const skip = el('p', { cls: 'ao3s-modal-desc', text: '稍后再说' });
+        skip.style.cssText = 'text-align:center;margin-top:16px;margin-bottom:0;cursor:pointer;font-size:13px;';
         skip.onclick = () => wrap.remove();
         modal.appendChild(skip);
 
       } else if (step === 1) {
-        // 步骤 1：填写偏好问卷
-        const proseOptions = ['细腻流畅', '简洁有力', '诗意意境', '白描写实'];
-        const emotionOptions = ['情感克制', '情感浓烈', '慢热甜', '张力虐'];
-        const paceOptions = ['快节奏爽文', '慢热深情', '张弛有度'];
-        const redFlagOptions = ['OOC', '逻辑硬伤', '大量心理独白', '文风稚嫩', '玛丽苏/杰克苏', '为虐而虐', '俗套 trope 堆砌'];
+        modal.appendChild(el('h2', { text: '你喜欢什么风格的文？' }));
+        modal.appendChild(el('p', { cls: 'ao3s-modal-desc', text: '选择后 AI 会据此为你量身评分，可多选，也可以跳过直接下一步。' }));
 
-        const selected = { prose: [], emotion: [], pace: [], flags: [] };
+        modal.appendChild(makeTagGroup('文笔偏好', ['细腻流畅', '简洁有力', '诗意意境', '白描写实'], 'prose'));
+        modal.appendChild(makeTagGroup('情感偏好', ['情感克制', '情感浓烈', '慢热甜', '张力虐'], 'emotion'));
+        modal.appendChild(makeTagGroup('节奏偏好', ['快节奏爽文', '慢热深情', '张弛有度'], 'pace'));
+        modal.appendChild(makeTagGroup('硬性雷点（踩到即不推荐）', ['OOC', '逻辑硬伤', '大量心理独白', '文风稚嫩', '玛丽苏/杰克苏', '为虐而虐', '俗套 trope 堆砌'], 'flags'));
 
-        modal.innerHTML = `<h2>你喜欢什么风格的文？</h2><p>选择后 AI 会据此为你量身评分（可多选）</p>`;
-        modal.appendChild(steps);
+        const cpGroup = el('div', { cls: 'ao3s-pref-group' });
+        cpGroup.appendChild(el('div', { cls: 'ao3s-label', text: '最喜欢的 CP（可选）' }));
+        const cpInput = el('input', { cls: 'ao3s-input', id: 'ao3s-cp-input', placeholder: '例：Getou Suguru / Gojo Satoru' });
+        cpInput.value = 'Getou Suguru/Gojo Satoru';
+        cpGroup.appendChild(cpInput);
+        modal.appendChild(cpGroup);
 
-        function makeTagCloud(label, items, key) {
-          const div = document.createElement('div');
-          div.innerHTML = `<div class="ao3s-label">${label}</div>`;
-          const tags = document.createElement('div');
-          tags.className = 'ao3s-tags';
-          items.forEach(item => {
-            const tag = document.createElement('div');
-            tag.className = 'ao3s-tag';
-            tag.textContent = item;
-            tag.onclick = () => {
-              if (selected[key].includes(item)) {
-                selected[key] = selected[key].filter(x => x !== item);
-                tag.classList.remove('selected');
-              } else {
-                selected[key].push(item);
-                tag.classList.add('selected');
-              }
-            };
-            tags.appendChild(tag);
-          });
-          div.appendChild(tags);
-          return div;
-        }
-
-        modal.appendChild(makeTagCloud('文笔偏好', proseOptions, 'prose'));
-        modal.appendChild(makeTagCloud('情感偏好', emotionOptions, 'emotion'));
-        modal.appendChild(makeTagCloud('节奏偏好', paceOptions, 'pace'));
-
-        modal.innerHTML += `<div class="ao3s-label" style="margin-top:8px">硬性雷点（踩到即不推荐）</div>`;
-        const flagTags = document.createElement('div');
-        flagTags.className = 'ao3s-tags';
-        redFlagOptions.forEach(item => {
-          const tag = document.createElement('div');
-          tag.className = 'ao3s-tag';
-          tag.textContent = item;
-          tag.onclick = () => {
-            if (selected.flags.includes(item)) {
-              selected.flags = selected.flags.filter(x => x !== item);
-              tag.classList.remove('selected');
-            } else {
-              selected.flags.push(item);
-              tag.classList.add('selected');
-            }
-          };
-          flagTags.appendChild(tag);
-        });
-        modal.appendChild(flagTags);
-
-        // 自定义 CP 偏好
-        const cpField = document.createElement('div');
-        cpField.innerHTML = `
-          <div class="ao3s-label" style="margin-top:16px">你最喜欢的 CP（可选）</div>
-          <input class="ao3s-input" id="ao3s-cp-input" placeholder="例：Getou Suguru/Gojo Satoru" value="Getou Suguru/Gojo Satoru">
-        `;
-        modal.appendChild(cpField);
-
-        const footer = document.createElement('div');
-        footer.className = 'ao3s-modal-footer';
-        const nextBtn = document.createElement('button');
-        nextBtn.className = 'ao3s-btn primary';
-        nextBtn.textContent = '下一步';
+        const footer = el('div', { cls: 'ao3s-modal-footer' });
+        const skipBtn = el('button', { cls: 'ao3s-btn', text: '跳过' });
+        skipBtn.onclick = () => { step = 2; render(); };
+        const nextBtn = el('button', { cls: 'ao3s-btn primary', text: '下一步 →' });
         nextBtn.onclick = async () => {
           const cp = document.getElementById('ao3s-cp-input')?.value || '';
           const tasteSummary = buildTasteSummary(selected, cp);
           try {
             await apiCall('PUT', '/api/preferences', {
-              fandoms: [{
-                name: '呪術廻戦 | Jujutsu Kaisen',
-                ao3_tag_id: '呪術廻戦%20%7C%20Jujutsu%20Kaisen%20(Anime%20*a*%20Manga)'
-              }],
+              fandoms: [{ name: '呪術廻戦 | Jujutsu Kaisen', ao3_tag_id: '呪術廻戦%20%7C%20Jujutsu%20Kaisen%20(Anime%20*a*%20Manga)' }],
               taste_profile: {
                 taste_summary: tasteSummary,
                 preferred_prose_style: selected.prose.join('、'),
@@ -590,71 +586,48 @@
               work_blacklist: [],
               author_kudos_list: []
             });
-          } catch (e) {
-            console.warn('保存偏好失败', e);
-          }
+          } catch (e) { console.warn('保存偏好失败', e); }
           step = 2; render();
         };
+        footer.appendChild(skipBtn);
         footer.appendChild(nextBtn);
         modal.appendChild(footer);
 
       } else if (step === 2) {
-        // 步骤 2：填写 AIHubMix API Key
-        modal.innerHTML = `
-          <h2>填写 AIHubMix API Key</h2>
-          <p>AI 分析费用由你自己的 Key 承担，约 ¥0.028/次。Key 会加密存储在服务器，脚本本身不持有。</p>
-        `;
-        modal.appendChild(steps);
+        modal.appendChild(el('h2', { text: '填写 AIHubMix Key' }));
+        modal.appendChild(el('p', { cls: 'ao3s-modal-desc', text: 'AI 分析费用由你自己的 Key 承担，约 ¥0.028 / 次。Key 加密存储在服务器，脚本本身不持有。' }));
 
-        const field = document.createElement('div');
-        field.className = 'ao3s-field';
-        field.innerHTML = `
-          <label class="ao3s-label">API Key</label>
-          <input class="ao3s-input" id="ao3s-key-input" type="password" placeholder="sk-...">
-        `;
-        modal.appendChild(field);
+        const keyField = el('div', { cls: 'ao3s-field' });
+        keyField.appendChild(el('label', { cls: 'ao3s-label', text: 'AIHubMix API Key' }));
+        keyField.appendChild(el('input', { cls: 'ao3s-input', id: 'ao3s-key-input', type: 'password', placeholder: 'sk-...' }));
+        modal.appendChild(keyField);
 
-        const ao3Field = document.createElement('div');
-        ao3Field.className = 'ao3s-field';
-        ao3Field.innerHTML = `
-          <label class="ao3s-label">AO3 账号（可选，用于分析 M/E 级内容）</label>
-          <input class="ao3s-input" id="ao3s-ao3user-input" placeholder="AO3 用户名" style="margin-bottom:8px">
-          <input class="ao3s-input" id="ao3s-ao3pass-input" type="password" placeholder="AO3 密码">
-        `;
-        modal.appendChild(ao3Field);
+        const ao3Section = el('div', { cls: 'ao3s-field' });
+        ao3Section.appendChild(el('label', { cls: 'ao3s-label', text: 'AO3 账号（可选，用于分析 M/E 级内容）' }));
+        const ao3user = el('input', { cls: 'ao3s-input', id: 'ao3s-ao3user-input', placeholder: 'AO3 用户名' });
+        ao3user.style.marginBottom = '8px';
+        ao3Section.appendChild(ao3user);
+        ao3Section.appendChild(el('input', { cls: 'ao3s-input', id: 'ao3s-ao3pass-input', type: 'password', placeholder: 'AO3 密码' }));
+        modal.appendChild(ao3Section);
 
-        const footer = document.createElement('div');
-        footer.className = 'ao3s-modal-footer';
-
-        const skipBtn = document.createElement('button');
-        skipBtn.className = 'ao3s-btn';
-        skipBtn.textContent = '稍后填写';
-        skipBtn.onclick = () => { wrap.remove(); };
-
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'ao3s-btn primary';
-        saveBtn.textContent = '保存并开始';
+        const footer = el('div', { cls: 'ao3s-modal-footer' });
+        const skipBtn = el('button', { cls: 'ao3s-btn', text: '稍后填写' });
+        skipBtn.onclick = () => wrap.remove();
+        const saveBtn = el('button', { cls: 'ao3s-btn primary', text: '保存并开始' });
         saveBtn.onclick = async () => {
           const key = document.getElementById('ao3s-key-input')?.value?.trim();
-          const ao3user = document.getElementById('ao3s-ao3user-input')?.value?.trim();
-          const ao3pass = document.getElementById('ao3s-ao3pass-input')?.value?.trim();
+          const user = document.getElementById('ao3s-ao3user-input')?.value?.trim();
+          const pass = document.getElementById('ao3s-ao3pass-input')?.value?.trim();
           if (!key) { showToast('请填写 API Key', 'error'); return; }
           try {
             await apiCall('PUT', '/api/user/aihubmix-key', { key });
-            if (ao3user && ao3pass) {
-              await apiCall('PUT', '/api/user/ao3-credentials', {
-                username: ao3user, password: ao3pass
-              });
-            }
+            if (user && pass) await apiCall('PUT', '/api/user/ao3-credentials', { username: user, password: pass });
             GM_setValue('onboarding_done', true);
             GM_setValue('setup_key_done', true);
             showToast('设置完成！', 'success');
             wrap.remove();
-          } catch (e) {
-            showToast('保存失败：' + (e.error || '请重试'), 'error');
-          }
+          } catch (e) { showToast('保存失败：' + (e.error || '请重试'), 'error'); }
         };
-
         footer.appendChild(skipBtn);
         footer.appendChild(saveBtn);
         modal.appendChild(footer);
