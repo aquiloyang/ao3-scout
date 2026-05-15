@@ -429,6 +429,14 @@
         onload: (r) => {
           try {
             const parsed = JSON.parse(r.responseText);
+            if (r.status === 401) {
+              GM_setValue('session_token', null);
+              _jwt = null;
+              showToast('登录已过期，请重新授权 GitHub', 'error');
+              setTimeout(() => showOnboarding(), 800);
+              reject(parsed);
+              return;
+            }
             if (r.status >= 400) reject(parsed);
             else resolve(parsed);
           } catch { reject({ error: r.responseText }); }
@@ -696,26 +704,38 @@
       return btn;
     });
 
+    // 文章页：单击触发分析；其他页：单击展开/收起 Speed Dial
     fab.onclick = (e) => {
       e.stopPropagation();
-      if (isWorkPage() && !dialOpen) {
-        // 文章页主按钮直接触发分析
-        if (!dialOpen) { triggerAnalysis(); return; }
-      }
+      if (isWorkPage()) { triggerAnalysis(); return; }
       dialOpen ? closeDial() : openDial();
     };
 
-    // 长按文章页 FAB 打开 dial
-    let pressTimer;
-    fab.addEventListener('mousedown', () => {
-      if (isWorkPage()) {
-        pressTimer = setTimeout(() => { openDial(); }, 500);
-      }
-    });
-    fab.addEventListener('mouseup', () => clearTimeout(pressTimer));
-    fab.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+    // hover 展开 Speed Dial（所有页面通用）
+    let hoverTimer;
+    const fabArea = document.createElement('div');
+    fabArea.style.cssText = 'position:fixed;bottom:16px;right:16px;width:72px;height:72px;z-index:8999;';
+    document.body.appendChild(fabArea);
 
-    document.addEventListener('click', () => { if (dialOpen) closeDial(); });
+    fabArea.addEventListener('mouseenter', () => {
+      hoverTimer = setTimeout(() => openDial(), 200);
+    });
+    fabArea.addEventListener('mouseleave', () => {
+      clearTimeout(hoverTimer);
+      setTimeout(() => {
+        const overDial = dialItems.some(b => b.matches(':hover'));
+        if (!overDial) closeDial();
+      }, 300);
+    });
+    dialItems.forEach(btn => {
+      btn.addEventListener('mouseleave', () => {
+        setTimeout(() => {
+          const overFab = fab.matches(':hover') || fabArea.matches(':hover');
+          const overAny = dialItems.some(b => b.matches(':hover'));
+          if (!overFab && !overAny) closeDial();
+        }, 300);
+      });
+    });
 
     // 检查缓存状态，显示绿点
     if (isWorkPage()) refreshCacheBadge(fab);
@@ -839,9 +859,9 @@
       showPanelLoading('AI 分析中，请稍候…');
 
       // 判断是否完结
-      const isComplete = !!document.querySelector('.stats .words')
-        && !!document.querySelector('dl.stats dd.chapters')
-        && document.querySelector('dl.stats dd.chapters')?.textContent?.includes('/') === false;
+      // AO3 章节格式：完结="14/14"，连载="5/?"
+      const chaptersText = document.querySelector('dl.stats dd.chapters')?.textContent || '';
+      const isComplete = chaptersText.includes('/') && !chaptersText.includes('?');
 
       // 获取 tags 作为上下文
       const tags = [...document.querySelectorAll('.tags .tag')].map(t => t.textContent).join(', ');
