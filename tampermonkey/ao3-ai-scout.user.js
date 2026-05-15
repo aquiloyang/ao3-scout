@@ -745,7 +745,7 @@
     // 创建 Speed Dial 子按钮
     const items = [
       { icon: '⚙', label: '设置', bottom: 24 + 56 + 4*64, action: showSettings },
-      { icon: '📚', label: '日志', bottom: 24 + 56 + 3*64, action: () => showToast('日志功能即将上线') },
+      { icon: '📚', label: '日志', bottom: 24 + 56 + 3*64, action: showJournal },
       { icon: '🕒', label: '历史推荐', bottom: 24 + 56 + 2*64, action: () => showToast('历史推荐功能即将上线') },
       { icon: '📋', label: '稍后看', bottom: 24 + 56 + 1*64, action: showReadingList }
     ];
@@ -1381,6 +1381,82 @@
     } catch {}
   }
 
+  // ─── 阅读日志抽屉 ─────────────────────────────────────────────────────────
+  function showJournal() {
+    if (document.querySelector('.ao3s-journal-drawer')) return;
+
+    const drawer = document.createElement('div');
+    drawer.className = 'ao3s-panel ao3s-journal-drawer';
+    drawer.innerHTML = `
+      <div class="ao3s-panel-header">
+        <span class="ao3s-panel-title">📚 阅读日志</span>
+        <button class="ao3s-close-btn" id="ao3s-journal-close">×</button>
+      </div>
+      <div style="padding:12px 16px 0;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="ao3s-tag selected" data-filter="">全部</button>
+        <button class="ao3s-tag" data-filter="completed">✅ 读完</button>
+        <button class="ao3s-tag" data-filter="ongoing">⏳ 在读</button>
+        <button class="ao3s-tag" data-filter="dropped">❌ 弃文</button>
+      </div>
+      <div id="ao3s-journal-body" style="padding:16px">
+        <div class="ao3s-loading"><div class="ao3s-spinner"></div></div>
+      </div>
+    `;
+    document.body.appendChild(drawer);
+
+    const close = () => { drawer.classList.remove('open'); setTimeout(() => drawer.remove(), 300); };
+    drawer.querySelector('#ao3s-journal-close').onclick = close;
+    setTimeout(() => drawer.classList.add('open'), 10);
+
+    let allEntries = [];
+
+    function renderEntries(entries) {
+      const body = drawer.querySelector('#ao3s-journal-body');
+      if (!entries.length) {
+        body.innerHTML = `<div style="text-align:center;color:var(--ao3s-muted);padding:32px 0;font-size:14px">还没有笔记</div>`;
+        return;
+      }
+      const statusIcon = { completed: '✅', ongoing: '⏳', dropped: '❌' };
+      body.innerHTML = entries.map(e => {
+        const score = e.overall_score;
+        const scoreColor = score >= 8 ? '#A6E3A1' : score >= 6 ? 'var(--ao3s-primary)' : score ? 'var(--ao3s-warn)' : null;
+        const dateStr = e.created_at
+          ? new Date(e.created_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+          : '';
+        return `
+        <div class="ao3s-rl-item">
+          <div class="ao3s-rl-title">
+            <a href="${e.ao3_url || `https://archiveofourown.org/works/${e.work_id}`}" target="_blank" class="ao3s-rl-link">${e.title || '未知作品'}</a>
+            ${score ? `<span class="ao3s-rl-score" style="background:${scoreColor}">${score}</span>` : ''}
+          </div>
+          <div class="ao3s-rl-meta">
+            ${statusIcon[e.read_result] || ''} ${dateStr}
+            ${e.fandom ? `· ${e.fandom}` : ''}
+          </div>
+          ${e.comment_text ? `<div style="font-size:13px;color:var(--ao3s-on-surface);margin-top:4px;line-height:1.5">${e.comment_text}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    // 过滤 tab
+    drawer.querySelectorAll('[data-filter]').forEach(tab => {
+      tab.onclick = () => {
+        drawer.querySelectorAll('[data-filter]').forEach(t => t.classList.remove('selected'));
+        tab.classList.add('selected');
+        const f = tab.dataset.filter;
+        renderEntries(f ? allEntries.filter(e => e.read_result === f) : allEntries);
+      };
+    });
+
+    apiCall('GET', '/api/journal').then(data => {
+      allEntries = data.entries || [];
+      renderEntries(allEntries);
+    }).catch(() => {
+      drawer.querySelector('#ao3s-journal-body').innerHTML =
+        `<div style="text-align:center;color:var(--ao3s-error);padding:32px 0;font-size:14px">加载失败，请重试</div>`;
+    });
+  }
+
   // ─── 稍后看抽屉 ───────────────────────────────────────────────────────────
   function showReadingList() {
     if (document.querySelector('.ao3s-drawer')) return;
@@ -1403,8 +1479,12 @@
     };
     setTimeout(() => drawer.classList.add('open'), 10);
 
-    apiCall('GET', '/api/reading-list').then(data => {
-      const items = data.items || [];
+    Promise.all([
+      apiCall('GET', '/api/reading-list'),
+      apiCall('GET', '/api/journal').catch(() => ({ entries: [] }))
+    ]).then(([rlData, jData]) => {
+      const items = rlData.items || [];
+      const notedIds = new Set((jData.entries || []).map(e => String(e.work_id)));
       const body = drawer.querySelector('#ao3s-rl-body');
       if (!items.length) {
         body.innerHTML = `<div style="text-align:center;color:var(--ao3s-muted);padding:32px 0;font-size:14px">还没有加入稍后看的文章</div>`;
@@ -1416,11 +1496,15 @@
         const dateStr = item.added_at
           ? new Date(item.added_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
           : '';
+        const hasNote = notedIds.has(String(item.work_id));
         return `
         <div class="ao3s-rl-item" data-id="${item.work_id}">
           <div class="ao3s-rl-title">
             <a href="${item.ao3_url}" target="_blank" class="ao3s-rl-link">${item.title}</a>
-            ${score ? `<span class="ao3s-rl-score" style="background:${scoreColor}">${score}</span>` : ''}
+            <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              ${hasNote ? `<span title="有笔记" style="font-size:13px">📝</span>` : ''}
+              ${score ? `<span class="ao3s-rl-score" style="background:${scoreColor}">${score}</span>` : ''}
+            </span>
           </div>
           <div class="ao3s-rl-meta">加入于 ${dateStr} · <a href="${item.ao3_url}" target="_blank" class="ao3s-rl-link" style="font-size:12px">去阅读 →</a></div>
           <button class="ao3s-rl-remove" data-id="${item.work_id}">移除</button>
