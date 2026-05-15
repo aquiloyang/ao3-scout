@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AO3 Scout
 // @namespace    https://github.com/aquiloyang/ao3-scout
-// @version      0.3.0
+// @version      1.0.0
 // @description  AI 驱动的 AO3 同人文质量分析工具
 // @author       aquiloyang
 // @match        https://archiveofourown.org/*
@@ -19,7 +19,7 @@
 
   // ─── 常量 ──────────────────────────────────────────────────────────────────
   const WORKER = 'https://ao3scout.ao3scout.workers.dev';
-  const VERSION = '0.3.0';
+  const VERSION = '1.0.0';
 
   // ─── 状态 ──────────────────────────────────────────────────────────────────
   let _jwt = GM_getValue('session_token', null);
