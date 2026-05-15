@@ -1,0 +1,16 @@
+name = "ao3scout"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ao3scout"
+database_id = "98c82a1c-0128-4022-bd9f-ecf79ac1278d"
+
+[triggers]
+crons = ["0 23 * * *"]
+
+[vars]
+PAGES_URL = "https://aquiloyang.github.io/ao3-scout"
+WORKER_URL = "https://ao3scout.ao3scout.workers.dev"
