@@ -257,7 +257,7 @@ async function postAnalyze(request, env, user) {
       model,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
-      temperature: 0.3
+      temperature: 0.7
     })
   });
 
@@ -396,7 +396,16 @@ function buildAnalyzePrompt(content, tasteProfile, warnBlacklist) {
   const tasteSummary = tasteProfile.taste_summary || '综合质量评估，注重逻辑、人物、节奏、情感';
   const warnList = warnBlacklist.length ? warnBlacklist.join('、') : '无';
 
-  return `你是专业的 AO3 同人文质量分析专家，擅长中文同人文的文学评价。
+  return `你是专业的 AO3 同人文质量分析专家，擅长中文同人文的文学评价。请严格按照以下评分标尺打分，不要保守，不要集中在 6-8 分段。
+
+【评分标尺（必须参照）】
+- 1-3分：文笔幼稚、逻辑混乱、角色严重 OOC、大量错别字或病句，几乎不可读
+- 4-5分：有明显不足，文笔平平，情节推进生硬，但尚可阅读
+- 6分：中等水平，没有明显亮点也没有明显硬伤，AO3 大多数作品在此区间
+- 7分：有一定质量，文笔流畅或情感到位，局部有亮点
+- 8分：质量较高，文笔/人物/节奏至少两项出色，少数硬伤
+- 9分：优秀，整体完成度高，有记忆点，瑕疵极少
+- 10分：顶级水准，文笔、人物、情感、节奏全面在线，圈内公认佳作级别
 
 【用户阅读偏好】：${tasteSummary}
 【内容警告黑名单】：${warnList}
@@ -404,9 +413,9 @@ function buildAnalyzePrompt(content, tasteProfile, warnBlacklist) {
 【待分析正文】：
 ${content}
 
-请对以上文本进行全面的写作质量分析，输出以下 JSON 格式（仅输出纯 JSON，不含 markdown 代码块）：
+请对以上文本进行严格的写作质量分析。打分时必须横向比较：如果这篇文在同类作品中属于中等，综合分应在 6 分左右，不要因为"没有明显问题"就给到 7-8。输出以下 JSON 格式（仅输出纯 JSON，不含 markdown 代码块）：
 {
-  "overall_score": <1-10整数>,
+  "overall_score": <1-10整数，请参照上方标尺，不要集中在6-8>,
   "work_meta": {
     "fandom": "作品所属fandom",
     "ship": "CP/配对",
@@ -418,11 +427,11 @@ ${content}
     "work_type": "原创文或翻译文"
   },
   "dimensions": {
-    "logic_structure":   { "score": <1-10>, "comment": "一句话评价" },
-    "character_voice":   { "score": <1-10>, "comment": "一句话评价" },
-    "narrative_rhythm":  { "score": <1-10>, "comment": "一句话评价" },
-    "emotional_tension": { "score": <1-10>, "comment": "一句话评价" },
-    "originality":       { "score": <1-10>, "comment": "一句话评价" }
+    "logic_structure":   { "score": <1-10，参照标尺>, "comment": "具体说明优劣，不要泛泛而谈" },
+    "character_voice":   { "score": <1-10>, "comment": "具体说明优劣" },
+    "narrative_rhythm":  { "score": <1-10>, "comment": "具体说明优劣" },
+    "emotional_tension": { "score": <1-10>, "comment": "具体说明优劣" },
+    "originality":       { "score": <1-10>, "comment": "具体说明优劣" }
   },
   "red_flags": [
     { "type": "问题类型", "excerpt": "原文片段不超过50字", "reason": "问题说明" }
@@ -432,7 +441,7 @@ ${content}
     "detected_issues": [],
     "warnings_accurate": true
   },
-  "one_liner": "一句话总结，不超过30字",
+  "one_liner": "一句话总结，不超过30字，需体现这篇文的具体特点",
   "best_excerpt": "最能体现文笔风格的原文段落，不超过80字，禁止选取人物死亡、感情告白、重要矛盾化解、结局揭示等情节节点"
 }`;
 }
