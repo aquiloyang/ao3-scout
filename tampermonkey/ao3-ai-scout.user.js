@@ -95,7 +95,7 @@
     .ao3s-dial-item:hover + .ao3s-dial-label,
     .ao3s-dial-item:hover ~ .ao3s-dial-label { opacity: 1; }
 
-    /* 遮罩 */
+    /* 遮罩：纯视觉，不拦截任何点击 */
     .ao3s-overlay {
       position: fixed; inset: 0;
       background: var(--ao3s-overlay);
@@ -103,7 +103,7 @@
       transition: opacity 0.2s ease;
       pointer-events: none;
     }
-    .ao3s-overlay.show { opacity: 1; pointer-events: auto; }
+    .ao3s-overlay.show { opacity: 1; }
 
     /* 侧滑面板 */
     .ao3s-panel {
@@ -878,7 +878,6 @@
     if (!_overlay) {
       _overlay = document.createElement('div');
       _overlay.className = 'ao3s-overlay';
-      _overlay.onclick = closePanel;
       document.body.appendChild(_overlay);
     }
     if (!_panel) {
