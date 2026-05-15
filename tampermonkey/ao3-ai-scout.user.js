@@ -1412,10 +1412,13 @@
 
   // ─── 搜索页 AI 按钮 ────────────────────────────────────────────────────────
   function injectSearchButtons() {
-    document.querySelectorAll('li.work.blurb[data-work-id]').forEach(li => {
+    document.querySelectorAll('li.work.blurb').forEach(li => {
       if (li.querySelector('.ao3s-preview-btn')) return; // 已注入
 
-      const workId = li.dataset.workId;
+      // AO3 work ID 在 id="work_12345" 里
+      const workId = li.id?.replace('work_', '');
+      if (!workId) return;
+
       const titleEl = li.querySelector('h4 a');
       const title = titleEl?.textContent?.trim() || '未知作品';
 
