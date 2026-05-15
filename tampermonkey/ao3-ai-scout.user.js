@@ -101,8 +101,9 @@
       background: var(--ao3s-overlay);
       z-index: 9200; opacity: 0;
       transition: opacity 0.2s ease;
+      pointer-events: none;
     }
-    .ao3s-overlay.show { opacity: 1; }
+    .ao3s-overlay.show { opacity: 1; pointer-events: auto; }
 
     /* 侧滑面板 */
     .ao3s-panel {
