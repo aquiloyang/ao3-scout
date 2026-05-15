@@ -47,7 +47,14 @@ export async function handleAPI(request, env) {
     if (request.method === 'GET') return getJournal(request, env, user);
     if (request.method === 'POST') return postJournal(request, env, user);
   }
-  if (path === '/api/reading-list') return postReadingList(request, env, user);
+  if (path === '/api/reading-list') {
+    if (request.method === 'GET') return getReadingList(env, user);
+    if (request.method === 'POST') return postReadingList(request, env, user);
+  }
+  if (path.startsWith('/api/reading-list/') && request.method === 'DELETE') {
+    const workId = path.split('/').pop();
+    return deleteReadingList(workId, env, user);
+  }
   if (path === '/api/feedback') return postFeedback(request, env, user);
   if (path === '/api/analyze') return postAnalyze(request, env, user);
   if (path === '/api/user/ao3-credentials') return putAO3Credentials(request, env, user);
@@ -180,6 +187,20 @@ async function getJournalStats(env, user) {
     stats.total += r.cnt;
   }
   return json(stats);
+}
+
+async function getReadingList(env, user) {
+  const { results } = await env.DB.prepare(
+    'SELECT work_id, title, ao3_url, cached_score, added_at FROM reading_list WHERE user_id = ? ORDER BY added_at DESC'
+  ).bind(user.sub).all();
+  return json({ items: results });
+}
+
+async function deleteReadingList(workId, env, user) {
+  await env.DB.prepare(
+    'DELETE FROM reading_list WHERE user_id = ? AND work_id = ?'
+  ).bind(user.sub, workId).run();
+  return json({ ok: true });
 }
 
 async function postReadingList(request, env, user) {

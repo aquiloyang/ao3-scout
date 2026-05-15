@@ -404,6 +404,42 @@
     .ao3s-divider {
       height: 1px; background: var(--ao3s-surface-2); margin: 0 16px;
     }
+
+    /* 稍后看抽屉列表项 */
+    .ao3s-rl-item {
+      padding: 12px 0; border-bottom: 1px solid var(--ao3s-surface-2);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .ao3s-rl-item:last-child { border-bottom: none; }
+    .ao3s-rl-title {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 14px; font-weight: 500; gap: 8px;
+    }
+    .ao3s-rl-score {
+      background: var(--ao3s-primary); color: #fff;
+      font-size: 12px; font-weight: 700; padding: 2px 7px;
+      border-radius: 10px; flex-shrink: 0;
+    }
+    .ao3s-rl-meta { font-size: 12px; color: var(--ao3s-muted); }
+    .ao3s-rl-remove {
+      align-self: flex-start; background: none; border: 1px solid var(--ao3s-surface-2);
+      color: var(--ao3s-muted); font-size: 12px; padding: 2px 8px;
+      border-radius: 4px; cursor: pointer; margin-top: 2px;
+    }
+    .ao3s-rl-remove:hover { border-color: var(--ao3s-error); color: var(--ao3s-error); }
+
+    /* 搜索页 AI 预览按钮 */
+    .ao3s-preview-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 20px; border: 1.5px solid var(--ao3s-primary);
+      background: transparent; color: var(--ao3s-primary);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      vertical-align: middle; margin-left: 8px;
+    }
+    .ao3s-preview-btn:hover { background: var(--ao3s-primary); color: #fff; }
+    .ao3s-preview-btn:disabled { opacity: 0.5; cursor: default; }
   `;
   document.head.appendChild(style);
 
@@ -683,7 +719,7 @@
       { icon: '⚙', label: '设置', bottom: 24 + 56 + 4*64, action: showSettings },
       { icon: '📚', label: '日志', bottom: 24 + 56 + 3*64, action: () => showToast('日志功能即将上线') },
       { icon: '🕒', label: '历史推荐', bottom: 24 + 56 + 2*64, action: () => showToast('历史推荐功能即将上线') },
-      { icon: '📋', label: '稍后看', bottom: 24 + 56 + 1*64, action: () => showToast('稍后看功能即将上线') }
+      { icon: '📋', label: '稍后看', bottom: 24 + 56 + 1*64, action: showReadingList }
     ];
 
     dialItems = items.map(item => {
@@ -1316,11 +1352,126 @@
     } catch {}
   }
 
+  // ─── 稍后看抽屉 ───────────────────────────────────────────────────────────
+  function showReadingList() {
+    if (document.querySelector('.ao3s-drawer')) return;
+
+    const drawer = document.createElement('div');
+    drawer.className = 'ao3s-panel ao3s-drawer';
+    drawer.innerHTML = `
+      <div class="ao3s-panel-header">
+        <span class="ao3s-panel-title">📋 稍后看</span>
+        <button class="ao3s-close-btn" id="ao3s-drawer-close">×</button>
+      </div>
+      <div id="ao3s-rl-body" style="padding:16px">
+        <div class="ao3s-loading"><div class="ao3s-spinner"></div></div>
+      </div>
+    `;
+    document.body.appendChild(drawer);
+    drawer.querySelector('#ao3s-drawer-close').onclick = () => {
+      drawer.classList.remove('open');
+      setTimeout(() => drawer.remove(), 300);
+    };
+    setTimeout(() => drawer.classList.add('open'), 10);
+
+    apiCall('GET', '/api/reading-list').then(data => {
+      const items = data.items || [];
+      const body = drawer.querySelector('#ao3s-rl-body');
+      if (!items.length) {
+        body.innerHTML = `<div style="text-align:center;color:var(--ao3s-muted);padding:32px 0;font-size:14px">还没有加入稍后看的文章</div>`;
+        return;
+      }
+      body.innerHTML = items.map(item => `
+        <div class="ao3s-rl-item" data-id="${item.work_id}">
+          <div class="ao3s-rl-title">
+            <a href="${item.ao3_url}" target="_blank" style="color:var(--ao3s-on-surface);text-decoration:none">${item.title}</a>
+            ${item.cached_score ? `<span class="ao3s-rl-score">${item.cached_score}</span>` : ''}
+          </div>
+          <div class="ao3s-rl-meta">${item.added_at ? new Date(item.added_at).toLocaleDateString('zh-CN') : ''}</div>
+          <button class="ao3s-rl-remove" data-id="${item.work_id}">移除</button>
+        </div>
+      `).join('');
+
+      body.querySelectorAll('.ao3s-rl-remove').forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.id;
+          try {
+            await apiCall('DELETE', `/api/reading-list/${id}`);
+            btn.closest('.ao3s-rl-item').remove();
+            if (!body.querySelector('.ao3s-rl-item')) {
+              body.innerHTML = `<div style="text-align:center;color:var(--ao3s-muted);padding:32px 0;font-size:14px">还没有加入稍后看的文章</div>`;
+            }
+          } catch { showToast('移除失败', 'error'); }
+        };
+      });
+    }).catch(() => {
+      drawer.querySelector('#ao3s-rl-body').innerHTML =
+        `<div style="text-align:center;color:var(--ao3s-error);padding:32px 0;font-size:14px">加载失败，请重试</div>`;
+    });
+  }
+
+  // ─── 搜索页 AI 按钮 ────────────────────────────────────────────────────────
+  function injectSearchButtons() {
+    document.querySelectorAll('li.work.blurb[data-work-id]').forEach(li => {
+      if (li.querySelector('.ao3s-preview-btn')) return; // 已注入
+
+      const workId = li.dataset.workId;
+      const titleEl = li.querySelector('h4 a');
+      const title = titleEl?.textContent?.trim() || '未知作品';
+
+      const btn = document.createElement('button');
+      btn.className = 'ao3s-preview-btn';
+      btn.textContent = '✦ AI 预览';
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isLoggedIn()) { showOnboarding(); return; }
+        if (btn.disabled) return;
+
+        btn.disabled = true;
+        btn.textContent = '分析中…';
+        openPanel();
+        showPanelLoading('AI 分析中，请稍候…');
+
+        try {
+          const result = await apiCall('POST', '/api/analyze', {
+            work_id: workId,
+            content: `【作品标题】${title}\n【来源】AO3 搜索页快速预览，无正文`,
+            model: GM_getValue('model', 'deepseek-v3.2'),
+            is_complete: false
+          });
+          GM_setValue(`cache_${workId}`, true);
+          showPanelResult(result, title, workId, 0);
+          btn.textContent = '✦ 已分析';
+        } catch (e) {
+          closePanel();
+          showToast(e.error || '分析失败', 'error');
+          btn.disabled = false;
+          btn.textContent = '✦ AI 预览';
+        }
+      };
+
+      // 插入到 ul.actions 或标题行后
+      const actions = li.querySelector('ul.actions');
+      if (actions) {
+        const item = document.createElement('li');
+        item.appendChild(btn);
+        actions.appendChild(item);
+      } else {
+        li.querySelector('h4')?.appendChild(btn);
+      }
+    });
+  }
+
   // ─── 初始化 ───────────────────────────────────────────────────────────────
   function init() {
     checkOAuthCallback();
     createFAB();
     setupCommentCapture();
+
+    if (isSearchPage()) {
+      injectSearchButtons();
+    }
 
     if (isHomePage()) {
       setTimeout(showRecommendationBanner, 500);
