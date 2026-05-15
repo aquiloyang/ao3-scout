@@ -238,14 +238,17 @@ async function postFeedback(request, env, user) {
 async function postAnalyze(request, env, user) {
   await enableFK(env);
   const b = await request.json();
-  const { work_id, content, model = 'deepseek-v3.2', is_complete = false } = b;
+  const { work_id, content, model = 'deepseek-v3.2', is_complete = false, is_preview = false } = b;
+
+  // 预览分析用独立缓存 key，避免污染全文缓存
+  const cacheKey = is_preview ? `${work_id}_preview` : work_id;
 
   // 检查缓存
   const cached = await env.DB.prepare(`
     SELECT result FROM analysis_cache
     WHERE user_id = ? AND work_id = ?
       AND (expires_at IS NULL OR expires_at > datetime('now'))
-  `).bind(user.sub, work_id).first();
+  `).bind(user.sub, cacheKey).first();
   if (cached) {
     await updateStats(env, user.sub, model, 0, true);
     return json({ ...JSON.parse(cached.result), from_cache: true });
@@ -265,7 +268,7 @@ async function postAnalyze(request, env, user) {
   const tasteProfile = JSON.parse(pref?.taste_profile || '{}');
   const warnBlacklist = JSON.parse(pref?.content_warning_blacklist || '[]');
 
-  const prompt = buildAnalyzePrompt(content, tasteProfile, warnBlacklist);
+  const prompt = buildAnalyzePrompt(content, tasteProfile, warnBlacklist, is_preview);
 
   // 调用 AIHubMix
   const aiResp = await fetch('https://api.aihubmix.com/v1/chat/completions', {
@@ -299,8 +302,7 @@ async function postAnalyze(request, env, user) {
   const outputTokens = aiData.usage?.completion_tokens || 0;
   const cost = calcCost(model, inputTokens, outputTokens);
 
-  // 写入缓存
-  const expiresAt = is_complete ? null : `datetime('now', '+7 days')`;
+  // 写入缓存（预览 3 天，全文永久/7天）
   await env.DB.prepare(`
     INSERT INTO analysis_cache (user_id, work_id, result, is_complete, expires_at)
     VALUES (?, ?, ?, ?, ${is_complete ? 'NULL' : "datetime('now', '+7 days')"})
@@ -309,7 +311,7 @@ async function postAnalyze(request, env, user) {
       is_complete = excluded.is_complete,
       expires_at = excluded.expires_at,
       cached_at = datetime('now')
-  `).bind(user.sub, work_id, JSON.stringify(result), is_complete ? 1 : 0).run();
+  `).bind(user.sub, cacheKey, JSON.stringify(result), is_complete ? 1 : 0).run();
 
   await updateStats(env, user.sub, model, cost, false);
 
@@ -413,9 +415,52 @@ async function handleInternal(request, env, path) {
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
-function buildAnalyzePrompt(content, tasteProfile, warnBlacklist) {
+function buildAnalyzePrompt(content, tasteProfile, warnBlacklist, isPreview = false) {
   const tasteSummary = tasteProfile.taste_summary || '综合质量评估，注重逻辑、人物、节奏、情感';
   const warnList = warnBlacklist.length ? warnBlacklist.join('、') : '无';
+
+  if (isPreview) {
+    return `你是专业的 AO3 同人文质量分析专家。以下是一篇作品的元数据信息（标题、Fandom、CP、Tag、字数、简介），没有正文。请基于这些公开信息做出合理的预期评估，给出保守但有依据的评分，不要以"无正文"为由拒绝分析。
+
+【评分标尺】
+- 1-3分：简介混乱/Tag 雷点密集/设定明显低幼，几乎不值得点进
+- 4-5分：普通流水账设定，简介平淡，无明显亮点
+- 6分：中等，Tags 和简介没有特别亮眼也没有明显雷点
+- 7分：简介有吸引力，CP/Tag 组合有新意，字数体量合适
+- 8-10分：简介展现高质量写作意图，Tag 精准有深度，圈内口碑类设定
+
+【用户阅读偏好】：${tasteSummary}
+【内容警告黑名单】：${warnList}
+
+【作品元数据】：
+${content}
+
+请基于以上元数据输出 JSON 评估（仅输出纯 JSON，不含 markdown 代码块）。comment 字段引用简介或 Tag 中的具体词句作为依据，格式：[评价]。依据：「简介/Tag中的具体词句」。best_excerpt 填写简介中最有代表性的句子（不超过60字）：
+{
+  "overall_score": <1-10整数>,
+  "work_meta": {
+    "fandom": "从元数据提取",
+    "ship": "从元数据提取",
+    "characters": [],
+    "additional_tags": [],
+    "rating": "从元数据提取",
+    "is_series": false,
+    "series_info": null,
+    "work_type": "预览分析"
+  },
+  "dimensions": {
+    "logic_structure":   { "score": <1-10>, "comment": "[评价]。依据：「Tag或简介词句」" },
+    "character_voice":   { "score": <1-10>, "comment": "[评价]。依据：「Tag或简介词句」" },
+    "narrative_rhythm":  { "score": <1-10>, "comment": "[评价]。依据：「Tag或简介词句」" },
+    "emotional_tension": { "score": <1-10>, "comment": "[评价]。依据：「Tag或简介词句」" },
+    "originality":       { "score": <1-10>, "comment": "[评价]。依据：「Tag或简介词句」" }
+  },
+  "red_flags": [],
+  "content_warnings_check": { "declared_warnings": [], "detected_issues": [], "warnings_accurate": true },
+  "one_liner": "【预览】一句话说明这篇文的预期风格/亮点，不超过25字",
+  "best_excerpt": "简介中最有代表性的句子，不超过60字"
+}`;
+  }
 
   return `你是专业的 AO3 同人文质量分析专家，擅长中文同人文的文学评价。请严格按照以下评分标尺打分，不要保守，不要集中在 6-8 分段。
 

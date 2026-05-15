@@ -1462,7 +1462,8 @@
             work_id: workId,
             content,
             model: GM_getValue('model', 'deepseek-v3.2'),
-            is_complete: false
+            is_complete: false,
+            is_preview: true
           });
           GM_setValue(`cache_${workId}`, true);
           showPanelResult(result, title, workId, 0);
