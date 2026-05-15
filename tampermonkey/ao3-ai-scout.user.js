@@ -851,7 +851,7 @@
       const result = await apiCall('POST', '/api/analyze', {
         work_id: workId,
         content: context,
-        model: 'deepseek-v3.2',
+        model: GM_getValue('model', 'deepseek-v3.2'),
         is_complete: isComplete
       });
 
