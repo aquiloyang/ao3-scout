@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AO3 Scout
 // @namespace    https://github.com/aquiloyang/ao3-scout
-// @version      1.0.0
+// @version      1.0.4
 // @description  AI 驱动的 AO3 同人文质量分析工具
 // @author       aquiloyang
 // @match        https://archiveofourown.org/*
@@ -19,7 +19,7 @@
 
   // ─── 常量 ──────────────────────────────────────────────────────────────────
   const WORKER = 'https://ao3scout.ao3scout.workers.dev';
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.4';
 
   // ─── 状态 ──────────────────────────────────────────────────────────────────
   let _jwt = GM_getValue('session_token', null);
@@ -1480,8 +1480,7 @@
             `【Rating】${rating}`,
             `【字数】${words}　【章节】${chapters}`,
             `【Tags】${tags}`,
-            summary ? `【简介】\n${summary}` : '',
-            `\n注意：本次为搜索页快速预览，仅凭元数据和简介分析，无正文。请基于简介、CP、Tags 等线索进行评估，在 one_liner 中注明"预览分析"，各维度评分可适当保守并在 comment 中注明依据有限。`
+            summary ? `【简介】\n${summary}` : ''
           ].filter(Boolean).join('\n');
 
           const result = await apiCall('POST', '/api/analyze', {

@@ -250,8 +250,17 @@ async function postAnalyze(request, env, user) {
       AND (expires_at IS NULL OR expires_at > datetime('now'))
   `).bind(user.sub, cacheKey).first();
   if (cached) {
-    await updateStats(env, user.sub, model, 0, true);
-    return json({ ...JSON.parse(cached.result), from_cache: true });
+    const cachedResult = JSON.parse(cached.result);
+    // 跳过明显的坏缓存（全维度=1 说明之前分析失败）
+    const isBadCache = cachedResult.overall_score === 1 &&
+      Object.values(cachedResult.dimensions || {}).every(d => d?.score === 1);
+    if (!isBadCache) {
+      await updateStats(env, user.sub, model, 0, true);
+      return json({ ...cachedResult, from_cache: true });
+    }
+    // 坏缓存：删掉旧记录，继续重新分析
+    await env.DB.prepare('DELETE FROM analysis_cache WHERE user_id = ? AND work_id = ?')
+      .bind(user.sub, cacheKey).run();
   }
 
   // 取出用户 AIHubMix Key
