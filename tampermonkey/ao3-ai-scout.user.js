@@ -213,7 +213,7 @@
       background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
       transition: opacity 0.15s, transform 0.1s;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
-      white-space: nowrap;
+      white-space: nowrap; box-sizing: border-box;
     }
     .ao3s-btn:hover { opacity: 0.82; }
     .ao3s-btn:active { transform: scale(0.97); }
@@ -286,7 +286,7 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
     }
     .ao3s-modal h2 {
-      margin: 0 0 8px; font-size: 24px; font-weight: 700;
+      margin: 0 0 8px; padding: 0; font-size: 24px; font-weight: 700;
       letter-spacing: -0.5px; line-height: 1.3; color: var(--ao3s-on-surface);
     }
     .ao3s-modal p.ao3s-modal-desc {
