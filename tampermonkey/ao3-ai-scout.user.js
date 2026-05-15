@@ -516,7 +516,12 @@
   }
 
   // ─── 登录状态 ──────────────────────────────────────────────────────────────
-  function isLoggedIn() { return !!_jwt; }
+  function isLoggedIn() {
+    if (_jwt) return true;
+    // 另一个标签页可能已完成 OAuth，从 GM storage 补读
+    _jwt = GM_getValue('session_token', null);
+    return !!_jwt;
+  }
 
   function startOAuth() {
     window.open(`${WORKER}/auth/github?client=tampermonkey`, '_blank');
@@ -593,7 +598,22 @@
 
         const btn = el('button', { cls: 'ao3s-btn primary', text: '🐙  用 GitHub 登录' });
         btn.style.cssText = 'width:100%;padding:14px;font-size:15px;margin-top:8px;';
-        btn.onclick = () => { startOAuth(); wrap.remove(); };
+        btn.onclick = () => {
+          startOAuth();
+          btn.disabled = true;
+          btn.textContent = '等待授权…';
+          // 轮询：另一个标签页完成 OAuth 后自动继续
+          const poll = setInterval(() => {
+            const t = GM_getValue('session_token', null);
+            if (t) {
+              clearInterval(poll);
+              _jwt = t;
+              wrap.remove();
+              setTimeout(checkOnboarding, 300);
+            }
+          }, 1000);
+          setTimeout(() => clearInterval(poll), 300000); // 5分钟后放弃
+        };
         modal.appendChild(btn);
 
         const skip = el('p', { cls: 'ao3s-modal-desc', text: '稍后再说' });
