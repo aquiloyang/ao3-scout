@@ -467,9 +467,9 @@
             const parsed = JSON.parse(r.responseText);
             if (r.status === 401) {
               GM_setValue('session_token', null);
+              GM_setValue('onboarding_done', false);
               _jwt = null;
-              showToast('登录已过期，请重新授权 GitHub', 'error');
-              setTimeout(() => showOnboarding(), 800);
+              showToast('登录已过期，点击右下角按钮重新授权', 'error');
               reject(parsed);
               return;
             }
@@ -506,12 +506,13 @@
     if (!token) return;
     GM_setValue('session_token', token);
     _jwt = token;
+    GM_setValue('onboarding_done', true); // 已登录即视为通过第一步
     // 清理 URL
     params.delete('ao3scout_token');
     const newUrl = location.pathname + (params.toString() ? '?' + params.toString() : '');
     history.replaceState(null, '', newUrl);
     showToast('GitHub 授权成功！', 'success');
-    // 检查是否需要继续 onboarding
+    // 继续 onboarding（偏好 + APIKey）
     setTimeout(() => checkOnboarding(), 500);
   }
 
@@ -532,7 +533,12 @@
   function checkOnboarding() {
     const done = GM_getValue('onboarding_done', false);
     const hasKey = GM_getValue('setup_key_done', false);
-    if (!done || !hasKey) showOnboarding();
+    // 已登录时不重复弹 GitHub 登录步骤；只在缺少 APIKey 时提示
+    if (isLoggedIn()) {
+      if (!hasKey) showOnboarding();
+    } else {
+      if (!done) showOnboarding();
+    }
   }
 
   function showOnboarding() {
@@ -618,7 +624,7 @@
 
         const skip = el('p', { cls: 'ao3s-modal-desc', text: '稍后再说' });
         skip.style.cssText = 'text-align:center;margin-top:16px;margin-bottom:0;cursor:pointer;font-size:13px;';
-        skip.onclick = () => wrap.remove();
+        skip.onclick = () => { GM_setValue('onboarding_done', true); wrap.remove(); };
         modal.appendChild(skip);
 
       } else if (step === 1) {
