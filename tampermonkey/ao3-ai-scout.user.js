@@ -1,0 +1,1339 @@
+// ==UserScript==
+// @name         AO3 Scout
+// @namespace    https://github.com/aquiloyang/ao3-scout
+// @version      0.3.0
+// @description  AI 驱动的 AO3 同人文质量分析工具
+// @author       aquiloyang
+// @match        https://archiveofourown.org/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
+// @connect      ao3scout.ao3scout.workers.dev
+// @updateURL    https://raw.githubusercontent.com/aquiloyang/ao3-scout/main/tampermonkey/ao3-ai-scout.user.js
+// @downloadURL  https://raw.githubusercontent.com/aquiloyang/ao3-scout/main/tampermonkey/ao3-ai-scout.user.js
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // ─── 常量 ──────────────────────────────────────────────────────────────────
+  const WORKER = 'https://ao3scout.ao3scout.workers.dev';
+  const VERSION = '0.3.0';
+
+  // ─── 状态 ──────────────────────────────────────────────────────────────────
+  let _jwt = GM_getValue('session_token', null);
+  let _analyzing = false;
+  let _panelOpen = false;
+
+  // ─── CSS 注入 ──────────────────────────────────────────────────────────────
+  const style = document.createElement('style');
+  style.textContent = `
+    :root {
+      --ao3s-primary: #E06C75;
+      --ao3s-surface: #1E1E2E;
+      --ao3s-surface-2: #2A2A3C;
+      --ao3s-on-surface: #CDD6F4;
+      --ao3s-muted: #6C7086;
+      --ao3s-error: #F38BA8;
+      --ao3s-success: #A6E3A1;
+      --ao3s-overlay: rgba(0,0,0,0.5);
+      --ao3s-warn: #FAB387;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --ao3s-primary: #C0392B;
+        --ao3s-surface: #FFFFFF;
+        --ao3s-surface-2: #F5F5F5;
+        --ao3s-on-surface: #1A1A2E;
+        --ao3s-muted: #9CA3AF;
+        --ao3s-error: #DC2626;
+        --ao3s-success: #16A34A;
+        --ao3s-overlay: rgba(0,0,0,0.3);
+        --ao3s-warn: #D97706;
+      }
+    }
+
+    /* FAB */
+    .ao3s-fab {
+      position: fixed; bottom: 24px; right: 24px;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--ao3s-primary); color: #fff;
+      border: none; cursor: pointer; font-size: 22px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 9000; display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s ease;
+    }
+    .ao3s-fab:hover { transform: scale(1.08); }
+    .ao3s-fab.open { transform: rotate(45deg); }
+    .ao3s-fab-badge {
+      position: absolute; top: 4px; right: 4px;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--ao3s-success); border: 2px solid var(--ao3s-primary);
+    }
+
+    /* Speed Dial 子按钮 */
+    .ao3s-dial-item {
+      position: fixed; right: 24px;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
+      border: none; cursor: pointer; font-size: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      z-index: 9000; display: flex; align-items: center; justify-content: center;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      transform: scale(0); opacity: 0;
+    }
+    .ao3s-dial-item.visible { transform: scale(1); opacity: 1; }
+    .ao3s-dial-label {
+      position: fixed; right: 84px;
+      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
+      padding: 4px 10px; border-radius: 6px; font-size: 13px;
+      z-index: 9000; opacity: 0; pointer-events: none;
+      transition: opacity 0.15s; white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    .ao3s-dial-item:hover + .ao3s-dial-label,
+    .ao3s-dial-item:hover ~ .ao3s-dial-label { opacity: 1; }
+
+    /* 遮罩 */
+    .ao3s-overlay {
+      position: fixed; inset: 0;
+      background: var(--ao3s-overlay);
+      z-index: 9200; opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .ao3s-overlay.show { opacity: 1; }
+
+    /* 侧滑面板 */
+    .ao3s-panel {
+      position: fixed; top: 0; right: -380px; width: 360px; height: 100%;
+      background: var(--ao3s-surface); color: var(--ao3s-on-surface);
+      z-index: 9300; overflow-y: auto;
+      transition: right 0.28s cubic-bezier(0.2,0,0,1);
+      box-shadow: -4px 0 24px rgba(0,0,0,0.3);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .ao3s-panel.open { right: 0; }
+    .ao3s-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--ao3s-surface-2);
+      position: sticky; top: 0; background: var(--ao3s-surface); z-index: 1;
+    }
+    .ao3s-panel-title { font-size: 16px; font-weight: 600; }
+    .ao3s-close-btn {
+      background: none; border: none; color: var(--ao3s-muted);
+      font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .ao3s-close-btn:hover { color: var(--ao3s-on-surface); }
+
+    /* 评分区 */
+    .ao3s-score-section {
+      display: flex; align-items: center; gap: 16px;
+      padding: 20px 16px;
+    }
+    .ao3s-score-ring {
+      position: relative; width: 80px; height: 80px; flex-shrink: 0;
+    }
+    .ao3s-score-ring svg { transform: rotate(-90deg); }
+    .ao3s-score-ring circle {
+      fill: none; stroke: var(--ao3s-surface-2); stroke-width: 6;
+    }
+    .ao3s-score-ring .progress {
+      stroke: var(--ao3s-primary); stroke-linecap: round;
+      transition: stroke-dashoffset 0.8s ease-out;
+    }
+    .ao3s-score-number {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700; color: var(--ao3s-on-surface);
+    }
+    .ao3s-score-right { flex: 1; }
+    .ao3s-score-big { font-size: 28px; font-weight: 700; }
+    .ao3s-one-liner { font-size: 13px; color: var(--ao3s-muted); margin-top: 6px; font-style: italic; }
+
+    /* 维度进度条 */
+    .ao3s-dims { padding: 0 16px 16px; }
+    .ao3s-dim-row { margin-bottom: 10px; }
+    .ao3s-dim-label {
+      display: flex; justify-content: space-between;
+      font-size: 13px; margin-bottom: 4px; color: var(--ao3s-on-surface);
+    }
+    .ao3s-dim-score { font-weight: 600; }
+    .ao3s-dim-bar {
+      height: 6px; background: var(--ao3s-surface-2); border-radius: 3px; overflow: hidden;
+    }
+    .ao3s-dim-fill {
+      height: 100%; border-radius: 3px;
+      background: var(--ao3s-primary);
+      transition: width 0.6s ease-out;
+    }
+    .ao3s-dim-fill.low { background: var(--ao3s-warn); }
+    .ao3s-dim-comment { font-size: 11px; color: var(--ao3s-muted); margin-top: 2px; }
+
+    /* 雷点区 */
+    .ao3s-redflag-section {
+      margin: 0 16px 16px;
+      background: rgba(243,139,168,0.1);
+      border: 1px solid var(--ao3s-error);
+      border-radius: 8px; overflow: hidden;
+    }
+    .ao3s-redflag-header {
+      padding: 10px 14px; font-size: 13px; font-weight: 600;
+      color: var(--ao3s-error); display: flex; align-items: center; gap: 6px;
+    }
+    .ao3s-redflag-item {
+      padding: 8px 14px; border-top: 1px solid rgba(243,139,168,0.2);
+      font-size: 12px;
+    }
+    .ao3s-redflag-type { font-weight: 600; color: var(--ao3s-error); }
+    .ao3s-redflag-excerpt {
+      color: var(--ao3s-muted); margin: 4px 0;
+      font-style: italic; font-size: 11px;
+    }
+
+    /* 最佳片段 */
+    .ao3s-excerpt-section {
+      margin: 0 16px 16px; padding: 12px 14px;
+      background: var(--ao3s-surface-2); border-radius: 8px;
+      font-size: 13px; color: var(--ao3s-on-surface);
+      line-height: 1.6; font-style: italic;
+    }
+
+    /* 页脚操作栏 */
+    .ao3s-panel-footer {
+      padding: 12px 16px; border-top: 1px solid var(--ao3s-surface-2);
+      position: sticky; bottom: 0; background: var(--ao3s-surface);
+    }
+    .ao3s-footer-actions {
+      display: flex; gap: 8px; margin-bottom: 8px;
+    }
+    .ao3s-btn {
+      flex: 1; padding: 8px 12px; border-radius: 8px; border: none;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
+      transition: opacity 0.15s;
+    }
+    .ao3s-btn:hover { opacity: 0.8; }
+    .ao3s-btn.primary { background: var(--ao3s-primary); color: #fff; }
+    .ao3s-footer-meta {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: var(--ao3s-muted);
+    }
+    .ao3s-feedback-btns { display: flex; gap: 8px; }
+    .ao3s-feedback-btns button {
+      background: none; border: 1px solid var(--ao3s-surface-2);
+      color: var(--ao3s-muted); padding: 2px 8px; border-radius: 4px;
+      cursor: pointer; font-size: 12px;
+    }
+    .ao3s-feedback-btns button:hover { color: var(--ao3s-on-surface); }
+
+    /* 加载状态 */
+    .ao3s-loading { padding: 32px 16px; text-align: center; }
+    .ao3s-spinner {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 3px solid var(--ao3s-surface-2);
+      border-top-color: var(--ao3s-primary);
+      animation: ao3s-spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes ao3s-spin { to { transform: rotate(360deg); } }
+    .ao3s-loading-text { font-size: 14px; color: var(--ao3s-muted); }
+    .ao3s-progress-bar {
+      height: 3px; background: var(--ao3s-surface-2); border-radius: 2px;
+      margin: 16px 0; overflow: hidden;
+    }
+    .ao3s-progress-fill {
+      height: 100%; background: var(--ao3s-primary); border-radius: 2px;
+      animation: ao3s-progress 2s ease-in-out infinite;
+    }
+    @keyframes ao3s-progress {
+      0% { width: 0%; margin-left: 0; }
+      50% { width: 60%; margin-left: 20%; }
+      100% { width: 0%; margin-left: 100%; }
+    }
+
+    /* Toast */
+    .ao3s-toast {
+      position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%);
+      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
+      padding: 10px 20px; border-radius: 24px; font-size: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3); z-index: 9600;
+      animation: ao3s-toast-in 0.3s ease, ao3s-toast-out 0.3s ease 2.7s forwards;
+    }
+    .ao3s-toast.error { background: var(--ao3s-error); color: #fff; }
+    .ao3s-toast.success { background: var(--ao3s-success); color: #1A1A2E; }
+    @keyframes ao3s-toast-in { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+    @keyframes ao3s-toast-out { from { opacity:1; } to { opacity:0; } }
+
+    /* 弹窗（onboarding / 设置）*/
+    .ao3s-modal-wrap {
+      position: fixed; inset: 0; z-index: 9500;
+      background: var(--ao3s-overlay);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ao3s-modal {
+      background: var(--ao3s-surface); color: var(--ao3s-on-surface);
+      border-radius: 16px; padding: 28px; width: 420px; max-width: 90vw;
+      max-height: 85vh; overflow-y: auto;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .ao3s-modal h2 { margin: 0 0 8px; font-size: 20px; }
+    .ao3s-modal p { margin: 0 0 20px; font-size: 14px; color: var(--ao3s-muted); line-height: 1.6; }
+    .ao3s-modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+
+    /* 标签云 */
+    .ao3s-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .ao3s-tag {
+      padding: 6px 14px; border-radius: 20px; font-size: 13px;
+      border: 1px solid var(--ao3s-surface-2); cursor: pointer;
+      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
+      transition: all 0.15s;
+    }
+    .ao3s-tag.selected { background: var(--ao3s-primary); color: #fff; border-color: var(--ao3s-primary); }
+
+    /* 输入框 */
+    .ao3s-input {
+      width: 100%; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+      border: 1px solid var(--ao3s-surface-2);
+      background: var(--ao3s-surface-2); color: var(--ao3s-on-surface);
+      box-sizing: border-box; outline: none;
+    }
+    .ao3s-input:focus { border-color: var(--ao3s-primary); }
+    .ao3s-label { font-size: 13px; color: var(--ao3s-muted); margin-bottom: 6px; display: block; }
+    .ao3s-field { margin-bottom: 16px; }
+
+    /* 步骤指示器 */
+    .ao3s-steps {
+      display: flex; justify-content: center; gap: 6px; margin-bottom: 24px;
+    }
+    .ao3s-step-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ao3s-surface-2);
+    }
+    .ao3s-step-dot.active { background: var(--ao3s-primary); }
+
+    /* 推荐横幅 */
+    .ao3s-banner {
+      position: fixed; top: -160px; left: 0; right: 0;
+      background: var(--ao3s-surface); border-bottom: 1px solid var(--ao3s-surface-2);
+      z-index: 9100; padding: 12px 20px;
+      transition: top 0.25s ease-out;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .ao3s-banner.show { top: 0; }
+    .ao3s-banner-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+    }
+    .ao3s-banner-title { font-size: 13px; font-weight: 600; color: var(--ao3s-on-surface); }
+    .ao3s-banner-close {
+      background: none; border: none; color: var(--ao3s-muted);
+      cursor: pointer; font-size: 16px; padding: 0 4px;
+    }
+    .ao3s-banner-cards {
+      display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
+    }
+    .ao3s-banner-card {
+      min-width: 260px; background: var(--ao3s-surface-2);
+      border-radius: 10px; padding: 12px; cursor: pointer;
+      transition: opacity 0.15s; flex-shrink: 0;
+    }
+    .ao3s-banner-card:hover { opacity: 0.85; }
+    .ao3s-banner-card-top {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    }
+    .ao3s-banner-card-title {
+      font-size: 13px; font-weight: 600; color: var(--ao3s-on-surface);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+    }
+    .ao3s-banner-score {
+      font-size: 13px; font-weight: 700; color: var(--ao3s-primary); flex-shrink: 0;
+    }
+    .ao3s-banner-meta { font-size: 11px; color: var(--ao3s-muted); margin: 4px 0; }
+    .ao3s-banner-excerpt {
+      font-size: 12px; color: var(--ao3s-on-surface); line-height: 1.5;
+      font-style: italic; margin-top: 6px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .ao3s-banner-liner { font-size: 11px; color: var(--ao3s-muted); margin-top: 6px; }
+
+    /* 置信度提示 */
+    .ao3s-confidence {
+      font-size: 11px; color: var(--ao3s-muted);
+      padding: 8px 16px; border-top: 1px solid var(--ao3s-surface-2);
+      line-height: 1.5;
+    }
+
+    /* 分隔线 */
+    .ao3s-divider {
+      height: 1px; background: var(--ao3s-surface-2); margin: 0 16px;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // ─── 工具函数 ──────────────────────────────────────────────────────────────
+  function showToast(msg, type = 'default') {
+    const t = document.createElement('div');
+    t.className = `ao3s-toast ${type}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  function apiCall(method, path, data) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method,
+        url: `${WORKER}${path}`,
+        headers: {
+          'Authorization': `Bearer ${_jwt}`,
+          'Content-Type': 'application/json'
+        },
+        data: data ? JSON.stringify(data) : undefined,
+        onload: (r) => {
+          try {
+            const parsed = JSON.parse(r.responseText);
+            if (r.status >= 400) reject(parsed);
+            else resolve(parsed);
+          } catch { reject({ error: r.responseText }); }
+        },
+        onerror: () => reject({ error: '网络错误' })
+      });
+    });
+  }
+
+  function getWorkId() {
+    const m = location.pathname.match(/\/works\/(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  function isWorkPage() {
+    return /\/works\/\d+/.test(location.pathname) && !/\/works\/\d+\/collections/.test(location.pathname);
+  }
+
+  function isSearchPage() {
+    return location.pathname.includes('/works') && !isWorkPage();
+  }
+
+  function isHomePage() {
+    return location.pathname === '/' || location.pathname === '';
+  }
+
+  // ─── OAuth 回调检测 ────────────────────────────────────────────────────────
+  function checkOAuthCallback() {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('ao3scout_token');
+    if (!token) return;
+    GM_setValue('session_token', token);
+    _jwt = token;
+    // 清理 URL
+    params.delete('ao3scout_token');
+    const newUrl = location.pathname + (params.toString() ? '?' + params.toString() : '');
+    history.replaceState(null, '', newUrl);
+    showToast('GitHub 授权成功！', 'success');
+    // 检查是否需要继续 onboarding
+    setTimeout(() => checkOnboarding(), 500);
+  }
+
+  // ─── 登录状态 ──────────────────────────────────────────────────────────────
+  function isLoggedIn() { return !!_jwt; }
+
+  function startOAuth() {
+    window.open(`${WORKER}/auth/github?client=tampermonkey`, '_blank');
+    showToast('已打开 GitHub 授权页面，授权完成后将自动返回');
+  }
+
+  // ─── Onboarding 引导弹窗 ──────────────────────────────────────────────────
+  function checkOnboarding() {
+    const done = GM_getValue('onboarding_done', false);
+    const hasKey = GM_getValue('setup_key_done', false);
+    if (!done || !hasKey) showOnboarding();
+  }
+
+  function showOnboarding() {
+    if (document.querySelector('.ao3s-modal-wrap')) return;
+
+    let step = isLoggedIn() ? 1 : 0;
+    const wrap = document.createElement('div');
+    wrap.className = 'ao3s-modal-wrap';
+    document.body.appendChild(wrap);
+
+    function render() {
+      wrap.innerHTML = '';
+      const modal = document.createElement('div');
+      modal.className = 'ao3s-modal';
+
+      // 步骤指示器
+      const steps = document.createElement('div');
+      steps.className = 'ao3s-steps';
+      for (let i = 0; i < 3; i++) {
+        const dot = document.createElement('div');
+        dot.className = `ao3s-step-dot ${i === step ? 'active' : ''}`;
+        steps.appendChild(dot);
+      }
+      modal.appendChild(steps);
+
+      if (step === 0) {
+        // 步骤 0：GitHub 授权
+        modal.innerHTML += `
+          <h2>欢迎使用 AO3 Scout 👋</h2>
+          <p>AI 驱动的同人文质量分析工具，帮你在 30 秒内判断一篇文是否值得读。<br><br>
+          首先，用 GitHub 账号登录（免费，无需任何额外权限）：</p>
+        `;
+        const btn = document.createElement('button');
+        btn.className = 'ao3s-btn primary';
+        btn.style.cssText = 'width:100%;padding:12px;font-size:15px;';
+        btn.textContent = '🐙 GitHub 授权登录';
+        btn.onclick = () => { startOAuth(); wrap.remove(); };
+        modal.appendChild(steps);
+        modal.appendChild(btn);
+
+        const skip = document.createElement('p');
+        skip.style.cssText = 'text-align:center;margin-top:12px;font-size:12px;color:var(--ao3s-muted);cursor:pointer;';
+        skip.textContent = '稍后再说';
+        skip.onclick = () => wrap.remove();
+        modal.appendChild(skip);
+
+      } else if (step === 1) {
+        // 步骤 1：填写偏好问卷
+        const proseOptions = ['细腻流畅', '简洁有力', '诗意意境', '白描写实'];
+        const emotionOptions = ['情感克制', '情感浓烈', '慢热甜', '张力虐'];
+        const paceOptions = ['快节奏爽文', '慢热深情', '张弛有度'];
+        const redFlagOptions = ['OOC', '逻辑硬伤', '大量心理独白', '文风稚嫩', '玛丽苏/杰克苏', '为虐而虐', '俗套 trope 堆砌'];
+
+        const selected = { prose: [], emotion: [], pace: [], flags: [] };
+
+        modal.innerHTML = `<h2>你喜欢什么风格的文？</h2><p>选择后 AI 会据此为你量身评分（可多选）</p>`;
+        modal.appendChild(steps);
+
+        function makeTagCloud(label, items, key) {
+          const div = document.createElement('div');
+          div.innerHTML = `<div class="ao3s-label">${label}</div>`;
+          const tags = document.createElement('div');
+          tags.className = 'ao3s-tags';
+          items.forEach(item => {
+            const tag = document.createElement('div');
+            tag.className = 'ao3s-tag';
+            tag.textContent = item;
+            tag.onclick = () => {
+              if (selected[key].includes(item)) {
+                selected[key] = selected[key].filter(x => x !== item);
+                tag.classList.remove('selected');
+              } else {
+                selected[key].push(item);
+                tag.classList.add('selected');
+              }
+            };
+            tags.appendChild(tag);
+          });
+          div.appendChild(tags);
+          return div;
+        }
+
+        modal.appendChild(makeTagCloud('文笔偏好', proseOptions, 'prose'));
+        modal.appendChild(makeTagCloud('情感偏好', emotionOptions, 'emotion'));
+        modal.appendChild(makeTagCloud('节奏偏好', paceOptions, 'pace'));
+
+        modal.innerHTML += `<div class="ao3s-label" style="margin-top:8px">硬性雷点（踩到即不推荐）</div>`;
+        const flagTags = document.createElement('div');
+        flagTags.className = 'ao3s-tags';
+        redFlagOptions.forEach(item => {
+          const tag = document.createElement('div');
+          tag.className = 'ao3s-tag';
+          tag.textContent = item;
+          tag.onclick = () => {
+            if (selected.flags.includes(item)) {
+              selected.flags = selected.flags.filter(x => x !== item);
+              tag.classList.remove('selected');
+            } else {
+              selected.flags.push(item);
+              tag.classList.add('selected');
+            }
+          };
+          flagTags.appendChild(tag);
+        });
+        modal.appendChild(flagTags);
+
+        // 自定义 CP 偏好
+        const cpField = document.createElement('div');
+        cpField.innerHTML = `
+          <div class="ao3s-label" style="margin-top:16px">你最喜欢的 CP（可选）</div>
+          <input class="ao3s-input" id="ao3s-cp-input" placeholder="例：Getou Suguru/Gojo Satoru" value="Getou Suguru/Gojo Satoru">
+        `;
+        modal.appendChild(cpField);
+
+        const footer = document.createElement('div');
+        footer.className = 'ao3s-modal-footer';
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'ao3s-btn primary';
+        nextBtn.textContent = '下一步';
+        nextBtn.onclick = async () => {
+          const cp = document.getElementById('ao3s-cp-input')?.value || '';
+          const tasteSummary = buildTasteSummary(selected, cp);
+          try {
+            await apiCall('PUT', '/api/preferences', {
+              fandoms: [{
+                name: '呪術廻戦 | Jujutsu Kaisen',
+                ao3_tag_id: '呪術廻戦%20%7C%20Jujutsu%20Kaisen%20(Anime%20*a*%20Manga)'
+              }],
+              taste_profile: {
+                taste_summary: tasteSummary,
+                preferred_prose_style: selected.prose.join('、'),
+                preferred_pacing: selected.pace.join('、'),
+                preferred_emotion_handling: selected.emotion.join('、'),
+                anti_patterns: selected.flags
+              },
+              content_warning_blacklist: [],
+              work_blacklist: [],
+              author_kudos_list: []
+            });
+          } catch (e) {
+            console.warn('保存偏好失败', e);
+          }
+          step = 2; render();
+        };
+        footer.appendChild(nextBtn);
+        modal.appendChild(footer);
+
+      } else if (step === 2) {
+        // 步骤 2：填写 AIHubMix API Key
+        modal.innerHTML = `
+          <h2>填写 AIHubMix API Key</h2>
+          <p>AI 分析费用由你自己的 Key 承担，约 ¥0.028/次。Key 会加密存储在服务器，脚本本身不持有。</p>
+        `;
+        modal.appendChild(steps);
+
+        const field = document.createElement('div');
+        field.className = 'ao3s-field';
+        field.innerHTML = `
+          <label class="ao3s-label">API Key</label>
+          <input class="ao3s-input" id="ao3s-key-input" type="password" placeholder="sk-...">
+        `;
+        modal.appendChild(field);
+
+        const ao3Field = document.createElement('div');
+        ao3Field.className = 'ao3s-field';
+        ao3Field.innerHTML = `
+          <label class="ao3s-label">AO3 账号（可选，用于分析 M/E 级内容）</label>
+          <input class="ao3s-input" id="ao3s-ao3user-input" placeholder="AO3 用户名" style="margin-bottom:8px">
+          <input class="ao3s-input" id="ao3s-ao3pass-input" type="password" placeholder="AO3 密码">
+        `;
+        modal.appendChild(ao3Field);
+
+        const footer = document.createElement('div');
+        footer.className = 'ao3s-modal-footer';
+
+        const skipBtn = document.createElement('button');
+        skipBtn.className = 'ao3s-btn';
+        skipBtn.textContent = '稍后填写';
+        skipBtn.onclick = () => { wrap.remove(); };
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'ao3s-btn primary';
+        saveBtn.textContent = '保存并开始';
+        saveBtn.onclick = async () => {
+          const key = document.getElementById('ao3s-key-input')?.value?.trim();
+          const ao3user = document.getElementById('ao3s-ao3user-input')?.value?.trim();
+          const ao3pass = document.getElementById('ao3s-ao3pass-input')?.value?.trim();
+          if (!key) { showToast('请填写 API Key', 'error'); return; }
+          try {
+            await apiCall('PUT', '/api/user/aihubmix-key', { key });
+            if (ao3user && ao3pass) {
+              await apiCall('PUT', '/api/user/ao3-credentials', {
+                username: ao3user, password: ao3pass
+              });
+            }
+            GM_setValue('onboarding_done', true);
+            GM_setValue('setup_key_done', true);
+            showToast('设置完成！', 'success');
+            wrap.remove();
+          } catch (e) {
+            showToast('保存失败：' + (e.error || '请重试'), 'error');
+          }
+        };
+
+        footer.appendChild(skipBtn);
+        footer.appendChild(saveBtn);
+        modal.appendChild(footer);
+      }
+
+      wrap.appendChild(modal);
+    }
+
+    render();
+  }
+
+  function buildTasteSummary(selected, cp) {
+    const parts = [];
+    if (selected.prose.length) parts.push(`偏好${selected.prose.join('、')}的文笔`);
+    if (selected.emotion.length) parts.push(`情感风格喜欢${selected.emotion.join('或')}`);
+    if (selected.pace.length) parts.push(`节奏偏好${selected.pace.join('、')}`);
+    if (cp) parts.push(`最喜欢的 CP 是 ${cp}`);
+    if (selected.flags.length) parts.push(`硬性雷点：${selected.flags.join('、')}`);
+    return parts.join('；') + '。';
+  }
+
+  // ─── Speed Dial FAB ────────────────────────────────────────────────────────
+  let dialOpen = false;
+  let dialItems = [];
+
+  function createFAB() {
+    if (document.querySelector('.ao3s-fab')) return;
+
+    const fab = document.createElement('button');
+    fab.className = 'ao3s-fab';
+    fab.innerHTML = isWorkPage() ? '✦' : '✦';
+    fab.title = isWorkPage() ? 'AI 预览' : 'AO3 Scout';
+    document.body.appendChild(fab);
+
+    // 创建 Speed Dial 子按钮
+    const items = [
+      { icon: '⚙', label: '设置', bottom: 24 + 56 + 4*64, action: showSettings },
+      { icon: '📚', label: '日志', bottom: 24 + 56 + 3*64, action: () => showToast('日志功能即将上线') },
+      { icon: '🕒', label: '历史推荐', bottom: 24 + 56 + 2*64, action: () => showToast('历史推荐功能即将上线') },
+      { icon: '📋', label: '稍后看', bottom: 24 + 56 + 1*64, action: () => showToast('稍后看功能即将上线') }
+    ];
+
+    dialItems = items.map(item => {
+      const btn = document.createElement('button');
+      btn.className = 'ao3s-dial-item';
+      btn.innerHTML = item.icon;
+      btn.style.bottom = item.bottom + 'px';
+      btn.title = item.label;
+      btn.onclick = (e) => { e.stopPropagation(); closeDial(); item.action(); };
+      document.body.appendChild(btn);
+
+      const lbl = document.createElement('div');
+      lbl.className = 'ao3s-dial-label';
+      lbl.textContent = item.label;
+      lbl.style.bottom = (item.bottom + 14) + 'px';
+      document.body.appendChild(lbl);
+
+      return btn;
+    });
+
+    fab.onclick = (e) => {
+      e.stopPropagation();
+      if (isWorkPage() && !dialOpen) {
+        // 文章页主按钮直接触发分析
+        if (!dialOpen) { triggerAnalysis(); return; }
+      }
+      dialOpen ? closeDial() : openDial();
+    };
+
+    // 长按文章页 FAB 打开 dial
+    let pressTimer;
+    fab.addEventListener('mousedown', () => {
+      if (isWorkPage()) {
+        pressTimer = setTimeout(() => { openDial(); }, 500);
+      }
+    });
+    fab.addEventListener('mouseup', () => clearTimeout(pressTimer));
+    fab.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+    document.addEventListener('click', () => { if (dialOpen) closeDial(); });
+
+    // 检查缓存状态，显示绿点
+    if (isWorkPage()) refreshCacheBadge(fab);
+  }
+
+  function openDial() {
+    dialOpen = true;
+    document.querySelector('.ao3s-fab')?.classList.add('open');
+    dialItems.forEach((btn, i) => {
+      setTimeout(() => btn.classList.add('visible'), i * 30);
+    });
+  }
+
+  function closeDial() {
+    dialOpen = false;
+    document.querySelector('.ao3s-fab')?.classList.remove('open');
+    dialItems.forEach(btn => btn.classList.remove('visible'));
+  }
+
+  async function refreshCacheBadge(fab) {
+    const workId = getWorkId();
+    if (!workId || !_jwt) return;
+    try {
+      // 静默检查缓存（不发起分析请求）
+      const existing = GM_getValue(`cache_${workId}`, null);
+      if (existing) {
+        const badge = document.createElement('div');
+        badge.className = 'ao3s-fab-badge';
+        fab.appendChild(badge);
+      }
+    } catch {}
+  }
+
+  // ─── DOM 抽样 ──────────────────────────────────────────────────────────────
+  function extractBodyFromDoc(doc) {
+    for (const el of doc.querySelectorAll('.notes, .preface, .end.notes')) el.remove();
+    const body = doc.querySelector('#chapters .userstuff.module, .userstuff.module');
+    return body ? body.innerText.trim() : '';
+  }
+
+  function fetchAO3Page(url) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        onload: (r) => {
+          const parser = new DOMParser();
+          resolve(parser.parseFromString(r.responseText, 'text/html'));
+        },
+        onerror: reject
+      });
+    });
+  }
+
+  async function sampleWorkContent(workId) {
+    // 获取章节列表
+    const navDoc = await fetchAO3Page(
+      `https://archiveofourown.org/works/${workId}/navigate`
+    );
+    const chapterLinks = [...navDoc.querySelectorAll('#main ol.chapter.index li a')];
+    const chapterIds = chapterLinks.map(a => a.href.match(/chapters\/(\d+)/)?.[1]).filter(Boolean);
+
+    if (chapterIds.length === 0) {
+      // 单章文：直接读当前页
+      const text = extractBodyFromDoc(document);
+      return { text: text.slice(0, 8000), chapters: 1 };
+    }
+
+    if (chapterIds.length === 1) {
+      const doc = await fetchAO3Page(
+        `https://archiveofourown.org/works/${workId}/chapters/${chapterIds[0]}?view_adult=true`
+      );
+      return { text: extractBodyFromDoc(doc).slice(0, 8000), chapters: 1 };
+    }
+
+    // 多章文抽样
+    const toFetch = [];
+    toFetch.push({ id: chapterIds[0], limit: 2000 });                              // 首章
+    if (chapterIds.length >= 4) {
+      const mid = Math.floor(chapterIds.length / 2);
+      toFetch.push({ id: chapterIds[mid], limit: 1000 });                          // 中间章
+    }
+    if (chapterIds.length >= 6) {
+      const mid2 = Math.floor(chapterIds.length * 0.75);
+      toFetch.push({ id: chapterIds[mid2], limit: 1000 });                         // 3/4 处
+    }
+    toFetch.push({ id: chapterIds[chapterIds.length - 2] || chapterIds[chapterIds.length - 1], limit: 1000 }); // 倒数第二章
+
+    const parts = await Promise.all(toFetch.map(async ({ id, limit }) => {
+      const doc = await fetchAO3Page(
+        `https://archiveofourown.org/works/${workId}/chapters/${id}?view_adult=true`
+      );
+      return extractBodyFromDoc(doc).slice(0, limit);
+    }));
+
+    return {
+      text: parts.join('\n\n【---章节分隔---】\n\n'),
+      chapters: chapterIds.length
+    };
+  }
+
+  // ─── 分析触发 ──────────────────────────────────────────────────────────────
+  async function triggerAnalysis() {
+    if (!isLoggedIn()) { showOnboarding(); return; }
+    if (_analyzing) return;
+    _analyzing = true;
+
+    const workId = getWorkId();
+    if (!workId) { showToast('无法识别作品 ID', 'error'); _analyzing = false; return; }
+
+    // 获取作品标题
+    const title = document.querySelector('.title.heading')?.textContent?.trim()
+      || document.querySelector('h2.title')?.textContent?.trim() || '未知作品';
+
+    openPanel();
+    showPanelLoading('正在抽取章节内容…');
+
+    try {
+      // 抽样
+      const { text, chapters } = await sampleWorkContent(workId);
+      showPanelLoading('AI 分析中，请稍候…');
+
+      // 判断是否完结
+      const isComplete = !!document.querySelector('.stats .words')
+        && !!document.querySelector('dl.stats dd.chapters')
+        && document.querySelector('dl.stats dd.chapters')?.textContent?.includes('/') === false;
+
+      // 获取 tags 作为上下文
+      const tags = [...document.querySelectorAll('.tags .tag')].map(t => t.textContent).join(', ');
+      const fandom = document.querySelector('.fandom.tags .tag')?.textContent || '';
+      const ship = document.querySelector('.relationship.tags .tag')?.textContent || '';
+      const rating = document.querySelector('.rating.tags .tag')?.textContent || '';
+      const wordCount = document.querySelector('dd.words')?.textContent || '';
+
+      const context = `【作品基本信息】\nFandom: ${fandom}\nRelationship: ${ship}\nRating: ${rating}\nTags: ${tags}\n字数: ${wordCount}\n章节数: ${chapters}\n\n【正文节选】\n${text}`;
+
+      showPanelLoading('正在生成报告…');
+
+      const result = await apiCall('POST', '/api/analyze', {
+        work_id: workId,
+        content: context,
+        model: 'deepseek-v3.2',
+        is_complete: isComplete
+      });
+
+      // 本地记录缓存标志
+      GM_setValue(`cache_${workId}`, true);
+      showPanelResult(result, title, workId, chapters);
+
+    } catch (e) {
+      const msg = e.error || '分析失败，请重试';
+      if (msg.includes('API Key 无效')) showToast('AIHubMix API Key 无效，请在设置中检查', 'error');
+      else if (msg.includes('余额不足')) showToast('AIHubMix 余额不足，请充值', 'error');
+      else if (msg.includes('API Key')) showToast('请先在设置中填写 AIHubMix API Key', 'error');
+      else showToast(msg, 'error');
+      closePanel();
+    } finally {
+      _analyzing = false;
+    }
+  }
+
+  // ─── 侧滑面板 ──────────────────────────────────────────────────────────────
+  let _overlay, _panel;
+
+  function openPanel() {
+    if (!_overlay) {
+      _overlay = document.createElement('div');
+      _overlay.className = 'ao3s-overlay';
+      _overlay.onclick = closePanel;
+      document.body.appendChild(_overlay);
+    }
+    if (!_panel) {
+      _panel = document.createElement('div');
+      _panel.className = 'ao3s-panel';
+      document.body.appendChild(_panel);
+    }
+    setTimeout(() => { _overlay.classList.add('show'); _panel.classList.add('open'); }, 10);
+    _panelOpen = true;
+  }
+
+  function closePanel() {
+    _overlay?.classList.remove('show');
+    _panel?.classList.remove('open');
+    _panelOpen = false;
+  }
+
+  function showPanelLoading(msg) {
+    if (!_panel) return;
+    _panel.innerHTML = `
+      <div class="ao3s-panel-header">
+        <span class="ao3s-panel-title">AO3 Scout</span>
+        <button class="ao3s-close-btn" onclick="this.closest('.ao3s-panel').classList.remove('open')">×</button>
+      </div>
+      <div class="ao3s-loading">
+        <div class="ao3s-spinner"></div>
+        <div class="ao3s-progress-bar"><div class="ao3s-progress-fill"></div></div>
+        <div class="ao3s-loading-text">${msg}</div>
+      </div>
+    `;
+    _panel.querySelector('.ao3s-close-btn').onclick = closePanel;
+  }
+
+  function showPanelResult(result, title, workId, chapters) {
+    if (!_panel) return;
+    const score = result.overall_score || 0;
+    const circumference = 2 * Math.PI * 34;
+    const offset = circumference * (1 - score / 10);
+
+    const dimLabels = {
+      logic_structure: '逻辑严密度',
+      character_voice: '人物塑造',
+      narrative_rhythm: '叙事节奏',
+      emotional_tension: '情感张力',
+      originality: '原创性'
+    };
+
+    const dimsHtml = Object.entries(dimLabels).map(([key, label]) => {
+      const d = result.dimensions?.[key];
+      if (!d) return '';
+      const isLow = d.score < 6;
+      return `
+        <div class="ao3s-dim-row">
+          <div class="ao3s-dim-label">
+            <span>${label}</span>
+            <span class="ao3s-dim-score" style="color:${isLow ? 'var(--ao3s-warn)' : 'var(--ao3s-on-surface)'}">${d.score}</span>
+          </div>
+          <div class="ao3s-dim-bar">
+            <div class="ao3s-dim-fill ${isLow ? 'low' : ''}" style="width:${d.score * 10}%"></div>
+          </div>
+          <div class="ao3s-dim-comment">${d.comment || ''}</div>
+        </div>
+      `;
+    }).join('');
+
+    const redFlagsHtml = result.red_flags?.length ? `
+      <div class="ao3s-redflag-section">
+        <div class="ao3s-redflag-header">⚠ 雷点警告 (${result.red_flags.length})</div>
+        ${result.red_flags.map(f => `
+          <div class="ao3s-redflag-item">
+            <div class="ao3s-redflag-type">${f.type}</div>
+            ${f.excerpt ? `<div class="ao3s-redflag-excerpt">「${f.excerpt}」</div>` : ''}
+            <div style="font-size:12px;color:var(--ao3s-on-surface)">${f.reason}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    const excerptHtml = result.best_excerpt ? `
+      <div class="ao3s-excerpt-section">「${result.best_excerpt}」</div>
+    ` : '';
+
+    const costText = result.cost_cny
+      ? `¥${result.cost_cny.toFixed(3)}`
+      : (result.from_cache ? '缓存' : '-');
+
+    _panel.innerHTML = `
+      <div class="ao3s-panel-header">
+        <span class="ao3s-panel-title" title="${title}">AO3 Scout</span>
+        <button class="ao3s-close-btn">×</button>
+      </div>
+
+      <div class="ao3s-score-section">
+        <div class="ao3s-score-ring">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="34"/>
+            <circle class="progress" cx="40" cy="40" r="34"
+              stroke-dasharray="${circumference}"
+              stroke-dashoffset="${offset}"/>
+          </svg>
+          <div class="ao3s-score-number">${score}</div>
+        </div>
+        <div class="ao3s-score-right">
+          <div class="ao3s-score-big">${score} <span style="font-size:16px;color:var(--ao3s-muted)">/10</span></div>
+          <div class="ao3s-one-liner">${result.one_liner || ''}</div>
+        </div>
+      </div>
+
+      <div class="ao3s-divider"></div>
+      <div class="ao3s-dims">${dimsHtml}</div>
+
+      ${redFlagsHtml}
+      ${excerptHtml}
+
+      <div class="ao3s-confidence">
+        基于${chapters > 1 ? `首章 + 中间章节 + 尾章，共约 ${chapters} 章抽样` : '全文'}分析
+        ${chapters > 3 ? '· 长篇作品中段质量可能与抽样片段有差异' : ''}
+      </div>
+
+      <div class="ao3s-panel-footer">
+        <div class="ao3s-footer-actions">
+          <button class="ao3s-btn" id="ao3s-btn-later">📋 稍后看</button>
+          <button class="ao3s-btn" id="ao3s-btn-note">📝 写笔记</button>
+        </div>
+        <div class="ao3s-footer-meta">
+          <span>${result.from_cache ? '📦 缓存' : costText}</span>
+          <div class="ao3s-feedback-btns">
+            <button id="ao3s-feedback-acc">准确 ✓</button>
+            <button id="ao3s-feedback-inacc">不准 ✗</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    _panel.querySelector('.ao3s-close-btn').onclick = closePanel;
+
+    _panel.querySelector('#ao3s-btn-later').onclick = async () => {
+      try {
+        await apiCall('POST', '/api/reading-list', {
+          work_id: workId, title,
+          ao3_url: location.href,
+          cached_score: score
+        });
+        showToast('已加入稍后看');
+      } catch (e) { showToast(e.error || '添加失败', 'error'); }
+    };
+
+    _panel.querySelector('#ao3s-btn-note').onclick = () => showNoteModal(workId, title, score);
+
+    _panel.querySelector('#ao3s-feedback-acc').onclick = async () => {
+      await apiCall('POST', '/api/feedback', { work_id: workId, ai_score: score, user_rating: 'accurate' });
+      showToast('感谢反馈！', 'success');
+    };
+    _panel.querySelector('#ao3s-feedback-inacc').onclick = async () => {
+      await apiCall('POST', '/api/feedback', { work_id: workId, ai_score: score, user_rating: 'inaccurate' });
+      showToast('感谢反馈，AI 会持续改进');
+    };
+  }
+
+  // ─── 笔记弹窗 ──────────────────────────────────────────────────────────────
+  function showNoteModal(workId, title, score) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ao3s-modal-wrap';
+    wrap.style.zIndex = '9500';
+    wrap.innerHTML = `
+      <div class="ao3s-modal">
+        <h2>📝 为《${title.slice(0, 20)}${title.length > 20 ? '…' : ''}》写笔记</h2>
+        <div class="ao3s-field">
+          <label class="ao3s-label">读后状态</label>
+          <div class="ao3s-tags">
+            <div class="ao3s-tag selected" data-val="completed">✅ 读完</div>
+            <div class="ao3s-tag" data-val="dropped">❌ 弃文</div>
+            <div class="ao3s-tag" data-val="ongoing">⏳ 在读</div>
+          </div>
+        </div>
+        <div class="ao3s-field">
+          <label class="ao3s-label">笔记（只有你自己能看到）</label>
+          <textarea class="ao3s-input" id="ao3s-note-text" rows="4" placeholder="随便写几句…" style="resize:vertical"></textarea>
+        </div>
+        <div class="ao3s-modal-footer">
+          <button class="ao3s-btn" id="ao3s-note-cancel">取消</button>
+          <button class="ao3s-btn primary" id="ao3s-note-save">保存</button>
+        </div>
+      </div>
+    `;
+
+    let readResult = 'completed';
+    wrap.querySelectorAll('[data-val]').forEach(tag => {
+      tag.onclick = () => {
+        wrap.querySelectorAll('[data-val]').forEach(t => t.classList.remove('selected'));
+        tag.classList.add('selected');
+        readResult = tag.dataset.val;
+      };
+    });
+
+    wrap.querySelector('#ao3s-note-cancel').onclick = () => wrap.remove();
+    wrap.querySelector('#ao3s-note-save').onclick = async () => {
+      const text = wrap.querySelector('#ao3s-note-text').value.trim();
+      const fandom = document.querySelector('.fandom.tags .tag')?.textContent || '';
+      const ship = document.querySelector('.relationship.tags .tag')?.textContent || '';
+      try {
+        await apiCall('POST', '/api/journal', {
+          work_id: workId, title, fandom, ship,
+          overall_score: score,
+          comment_text: text,
+          comment_type: 'tool_private',
+          read_result: readResult,
+          ao3_url: location.href
+        });
+        showToast('笔记已保存', 'success');
+        wrap.remove();
+      } catch (e) { showToast(e.error || '保存失败', 'error'); }
+    };
+
+    document.body.appendChild(wrap);
+  }
+
+  // ─── 设置面板 ──────────────────────────────────────────────────────────────
+  function showSettings() {
+    const wrap = document.createElement('div');
+    wrap.className = 'ao3s-modal-wrap';
+    wrap.style.zIndex = '9400';
+    wrap.innerHTML = `
+      <div class="ao3s-modal">
+        <h2>⚙ 设置</h2>
+        <div class="ao3s-field">
+          <label class="ao3s-label">AIHubMix API Key</label>
+          <input class="ao3s-input" id="ao3s-set-key" type="password" placeholder="重新填写以更新">
+        </div>
+        <div class="ao3s-field">
+          <label class="ao3s-label">分析模型档位</label>
+          <div class="ao3s-tags">
+            <div class="ao3s-tag" data-model="gemini-2.5-pro">🚀 高品质 ¥0.128/次</div>
+            <div class="ao3s-tag selected" data-model="deepseek-v3.2">⚖ 均衡 ¥0.028/次</div>
+            <div class="ao3s-tag" data-model="gemini-2.5-flash">💰 省钱 ¥0.010/次</div>
+          </div>
+        </div>
+        <div class="ao3s-field">
+          <label class="ao3s-label">AO3 账号（用于分析 M/E 内容，可选）</label>
+          <input class="ao3s-input" id="ao3s-set-ao3user" placeholder="AO3 用户名" style="margin-bottom:8px">
+          <input class="ao3s-input" id="ao3s-set-ao3pass" type="password" placeholder="AO3 密码">
+        </div>
+        <div class="ao3s-field">
+          <label class="ao3s-label">账号状态</label>
+          <div style="font-size:13px;color:var(--ao3s-muted)" id="ao3s-login-status">
+            ${isLoggedIn() ? '✅ 已登录 GitHub' : '❌ 未登录'}
+          </div>
+          ${!isLoggedIn() ? '<button class="ao3s-btn" style="margin-top:8px;width:100%" id="ao3s-relogin">重新授权 GitHub</button>' : ''}
+        </div>
+        <div class="ao3s-modal-footer">
+          <button class="ao3s-btn" id="ao3s-set-cancel">取消</button>
+          <button class="ao3s-btn primary" id="ao3s-set-save">保存</button>
+        </div>
+      </div>
+    `;
+
+    let selectedModel = GM_getValue('model', 'deepseek-v3.2');
+    wrap.querySelectorAll('[data-model]').forEach(tag => {
+      if (tag.dataset.model === selectedModel) tag.classList.add('selected');
+      else tag.classList.remove('selected');
+      tag.onclick = () => {
+        wrap.querySelectorAll('[data-model]').forEach(t => t.classList.remove('selected'));
+        tag.classList.add('selected');
+        selectedModel = tag.dataset.model;
+      };
+    });
+
+    wrap.querySelector('#ao3s-set-cancel').onclick = () => wrap.remove();
+    wrap.querySelector('#ao3s-relogin')?.addEventListener('click', startOAuth);
+    wrap.querySelector('#ao3s-set-save').onclick = async () => {
+      const key = wrap.querySelector('#ao3s-set-key').value.trim();
+      const ao3user = wrap.querySelector('#ao3s-set-ao3user').value.trim();
+      const ao3pass = wrap.querySelector('#ao3s-set-ao3pass').value.trim();
+      GM_setValue('model', selectedModel);
+      try {
+        if (key) await apiCall('PUT', '/api/user/aihubmix-key', { key });
+        if (ao3user && ao3pass) {
+          await apiCall('PUT', '/api/user/ao3-credentials', { username: ao3user, password: ao3pass });
+        }
+        showToast('设置已保存', 'success');
+        wrap.remove();
+      } catch (e) { showToast(e.error || '保存失败', 'error'); }
+    };
+
+    document.body.appendChild(wrap);
+  }
+
+  // ─── 推荐横幅（仅 AO3 首页）──────────────────────────────────────────────
+  async function showRecommendationBanner() {
+    if (!isLoggedIn()) return;
+    const todayKey = 'banner_closed_' + new Date().toISOString().slice(0, 10);
+    if (GM_getValue(todayKey, false)) return;
+
+    let data;
+    try {
+      data = await apiCall('GET', '/api/recommendations?date=today');
+    } catch { return; }
+
+    if (!data?.fics?.length) {
+      // 今日无推荐
+      const bar = document.createElement('div');
+      bar.style.cssText = `
+        background: var(--ao3s-surface); color: var(--ao3s-muted);
+        text-align: center; padding: 8px; font-size: 13px;
+        border-bottom: 1px solid var(--ao3s-surface-2);
+        font-family: -apple-system, sans-serif;
+      `;
+      bar.textContent = '⏳ AO3 Scout 今日推荐尚未生成，稍后再看';
+      document.body.prepend(bar);
+      return;
+    }
+
+    const banner = document.createElement('div');
+    banner.className = 'ao3s-banner';
+    banner.innerHTML = `
+      <div class="ao3s-banner-header">
+        <span class="ao3s-banner-title">✦ 今日为你精选 ${data.fics.length} 篇</span>
+        <button class="ao3s-banner-close">×</button>
+      </div>
+      <div class="ao3s-banner-cards">
+        ${data.fics.map(f => `
+          <div class="ao3s-banner-card" data-url="${f.ao3_url || '#'}">
+            <div class="ao3s-banner-card-top">
+              <div class="ao3s-banner-card-title">${f.title || '未知标题'}</div>
+              <div class="ao3s-banner-score">★ ${f.score || '?'}</div>
+            </div>
+            <div class="ao3s-banner-meta">${f.fandom || ''} · ${f.word_count ? Math.round(f.word_count/1000)+'K字' : ''}</div>
+            ${f.best_excerpt ? `<div class="ao3s-banner-excerpt">「${f.best_excerpt}」</div>` : ''}
+            <div class="ao3s-banner-liner">${f.one_liner || ''}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    document.body.prepend(banner);
+    setTimeout(() => banner.classList.add('show'), 500);
+
+    banner.querySelector('.ao3s-banner-close').onclick = () => {
+      banner.classList.remove('show');
+      GM_setValue(todayKey, true);
+      setTimeout(() => banner.remove(), 300);
+    };
+
+    banner.querySelectorAll('.ao3s-banner-card').forEach(card => {
+      card.onclick = () => {
+        const url = card.dataset.url;
+        if (url && url !== '#') window.open(url, '_blank');
+      };
+    });
+  }
+
+  // ─── ESC 快捷键 ───────────────────────────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _panelOpen) closePanel();
+    if (e.key === '/' && isWorkPage() && !_panelOpen &&
+        !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+      e.preventDefault();
+      triggerAnalysis();
+    }
+  });
+
+  // ─── AO3 评论自动捕获 ──────────────────────────────────────────────────────
+  function setupCommentCapture() {
+    const form = document.querySelector('form.new_comment');
+    if (!form || !isWorkPage()) return;
+    form.addEventListener('submit', async () => {
+      const text = document.querySelector('#comment_content')?.value;
+      const workId = getWorkId();
+      const title = document.querySelector('.title.heading')?.textContent?.trim();
+      if (text && workId && _jwt) {
+        try {
+          await apiCall('POST', '/api/journal', {
+            work_id: workId, title,
+            comment_text: text,
+            comment_type: 'ao3_public',
+            ao3_url: location.href
+          });
+        } catch {}
+      }
+    });
+  }
+
+  // ─── 版本检查 ──────────────────────────────────────────────────────────────
+  async function checkVersion() {
+    try {
+      const resp = await new Promise(resolve => GM_xmlhttpRequest({
+        method: 'GET',
+        url: 'https://api.github.com/repos/aquiloyang/ao3-scout/releases/latest',
+        headers: { 'User-Agent': 'AO3-Scout' },
+        onload: resolve, onerror: resolve
+      }));
+      const data = JSON.parse(resp.responseText);
+      const latest = data.tag_name?.replace('v', '');
+      if (latest && latest > VERSION) {
+        const bar = document.createElement('div');
+        bar.style.cssText = `
+          background: var(--ao3s-warn); color: #1A1A2E;
+          text-align: center; padding: 6px; font-size: 13px; cursor: pointer;
+          font-family: -apple-system, sans-serif; z-index: 9100; position: relative;
+        `;
+        bar.innerHTML = `🔔 AO3 Scout 有新版本 v${latest} 可用，点击查看`;
+        bar.onclick = () => window.open(`https://github.com/aquiloyang/ao3-scout/releases/latest`, '_blank');
+        document.body.prepend(bar);
+      }
+    } catch {}
+  }
+
+  // ─── 初始化 ───────────────────────────────────────────────────────────────
+  function init() {
+    checkOAuthCallback();
+    createFAB();
+    setupCommentCapture();
+
+    if (isHomePage()) {
+      setTimeout(showRecommendationBanner, 500);
+    }
+
+    if (!isLoggedIn()) {
+      setTimeout(checkOnboarding, 1500);
+    } else {
+      const keyDone = GM_getValue('setup_key_done', false);
+      if (!keyDone) setTimeout(checkOnboarding, 1000);
+    }
+
+    checkVersion();
+  }
+
+  // 菜单命令
+  GM_registerMenuCommand('⚙ AO3 Scout 设置', showSettings);
+  GM_registerMenuCommand('🔄 重新授权 GitHub', startOAuth);
+
+  init();
+})();

@@ -4,18 +4,24 @@ export async function handleAuth(request, env) {
   const url = new URL(request.url);
 
   if (url.pathname === '/auth/github') {
+    // client=tampermonkey 时回调到 AO3；否则回调到 Pages
+    const client = url.searchParams.get('client') || 'pages';
+    const state = `${crypto.randomUUID()}:${client}`;
     const authUrl = new URL('https://github.com/login/oauth/authorize');
     authUrl.searchParams.set('client_id', env.GITHUB_CLIENT_ID);
     authUrl.searchParams.set('scope', 'read:user');
-    authUrl.searchParams.set('state', crypto.randomUUID());
+    authUrl.searchParams.set('state', state);
     return Response.redirect(authUrl.toString(), 302);
   }
 
   if (url.pathname === '/auth/callback') {
     const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state') || '';
     if (!code) return jsonError('Missing code', 400);
 
-    // 用 code 换 GitHub access token
+    const [, client] = state.split(':');
+
+    // 用 code 换 access token
     const tokenResp = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -46,13 +52,12 @@ export async function handleAuth(request, env) {
         last_active  = datetime('now')
     `).bind(String(ghUser.id), ghUser.login).run();
 
-    // 新用户初始化 preferences 行
+    // 新用户初始化 preferences / stats 行
     await env.DB.prepare(`
       INSERT OR IGNORE INTO preferences (user_id)
       SELECT id FROM users WHERE github_id = ?
     `).bind(String(ghUser.id)).run();
 
-    // 新用户初始化 stats 行
     await env.DB.prepare(`
       INSERT OR IGNORE INTO stats (user_id)
       SELECT id FROM users WHERE github_id = ?
@@ -62,13 +67,19 @@ export async function handleAuth(request, env) {
       'SELECT id FROM users WHERE github_id = ?'
     ).bind(String(ghUser.id)).first();
 
-    // 签发 JWT
     const jwt = await signJWT(
       { sub: user.id, github_id: String(ghUser.id), login: ghUser.login },
       env.JWT_SECRET
     );
 
-    // 重定向回 Pages，token 通过 URL 参数传递
+    // Tampermonkey 流：带 token 跳回 AO3 首页
+    if (client === 'tampermonkey') {
+      const redirect = new URL('https://archiveofourown.org/');
+      redirect.searchParams.set('ao3scout_token', jwt);
+      return Response.redirect(redirect.toString(), 302);
+    }
+
+    // Pages 流：带 token 跳回手机端网页
     const redirect = new URL(env.PAGES_URL);
     redirect.searchParams.set('token', jwt);
     return Response.redirect(redirect.toString(), 302);
