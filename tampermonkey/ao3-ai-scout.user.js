@@ -427,6 +427,8 @@
       border-radius: 4px; cursor: pointer; margin-top: 2px;
     }
     .ao3s-rl-remove:hover { border-color: var(--ao3s-error); color: var(--ao3s-error); }
+    .ao3s-rl-link { color: var(--ao3s-on-surface); text-decoration: none; }
+    .ao3s-rl-link:hover { color: var(--ao3s-primary); text-decoration: underline; }
 
     /* 搜索页 AI 预览按钮 */
     .ao3s-preview-btn {
@@ -999,7 +1001,8 @@
     _panel.querySelector('.ao3s-close-btn').onclick = closePanel;
   }
 
-  function showPanelResult(result, title, workId, chapters) {
+  function showPanelResult(result, title, workId, chapters, workUrl) {
+    workUrl = workUrl || location.href;
     if (!_panel) return;
     const score = result.overall_score || 0;
     const circumference = 2 * Math.PI * 34;
@@ -1111,7 +1114,7 @@
       try {
         await apiCall('POST', '/api/reading-list', {
           work_id: workId, title,
-          ao3_url: location.href,
+          ao3_url: workUrl,
           cached_score: score
         });
         showToast('已加入稍后看');
@@ -1407,16 +1410,22 @@
         body.innerHTML = `<div style="text-align:center;color:var(--ao3s-muted);padding:32px 0;font-size:14px">还没有加入稍后看的文章</div>`;
         return;
       }
-      body.innerHTML = items.map(item => `
+      body.innerHTML = items.map(item => {
+        const score = item.cached_score;
+        const scoreColor = score >= 8 ? '#A6E3A1' : score >= 6 ? 'var(--ao3s-primary)' : score ? 'var(--ao3s-warn)' : null;
+        const dateStr = item.added_at
+          ? new Date(item.added_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+          : '';
+        return `
         <div class="ao3s-rl-item" data-id="${item.work_id}">
           <div class="ao3s-rl-title">
-            <a href="${item.ao3_url}" target="_blank" style="color:var(--ao3s-on-surface);text-decoration:none">${item.title}</a>
-            ${item.cached_score ? `<span class="ao3s-rl-score">${item.cached_score}</span>` : ''}
+            <a href="${item.ao3_url}" target="_blank" class="ao3s-rl-link">${item.title}</a>
+            ${score ? `<span class="ao3s-rl-score" style="background:${scoreColor}">${score}</span>` : ''}
           </div>
-          <div class="ao3s-rl-meta">${item.added_at ? new Date(item.added_at).toLocaleDateString('zh-CN') : ''}</div>
+          <div class="ao3s-rl-meta">加入于 ${dateStr} · <a href="${item.ao3_url}" target="_blank" class="ao3s-rl-link" style="font-size:12px">去阅读 →</a></div>
           <button class="ao3s-rl-remove" data-id="${item.work_id}">移除</button>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
 
       body.querySelectorAll('.ao3s-rl-remove').forEach(btn => {
         btn.onclick = async () => {
@@ -1491,7 +1500,8 @@
             is_preview: true
           });
           GM_setValue(`cache_${workId}`, true);
-          showPanelResult(result, title, workId, 0);
+          const workUrl = `https://archiveofourown.org/works/${workId}`;
+          showPanelResult(result, title, workId, 0, workUrl);
           btn.textContent = '✦ 已分析';
         } catch (e) {
           closePanel();
